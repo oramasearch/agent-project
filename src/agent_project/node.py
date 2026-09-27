@@ -19,27 +19,38 @@ from typing import Any
 
 import httpx
 
-# Which capability a tool reads from, when the name differs. The build tools do not read — they
-# record an intent that lands in the pipeline — so only the reads are mapped.
+# Which Zetta capability a tool reads from. The build tools do not read — they record an intent
+# that lands in the pipeline — so only the reads are mapped. These are the node's real `/v1` reads
+# (GET /v1/<capability>): the Pipelines on a node live on its projects, and a node has no explainer
+# catalogue, so `list_explainers` observes the models whose drivers can be explained.
 READ_CAPABILITY = {
-    "list_datasets": "datasets",
-    "get_dataset": "dataset",
-    "list_pipelines": "pipelines",
-    "list_explainers": "explainers",
+    "list_datasets": "list_datasets",
+    "get_dataset": "get_dataset",
+    "list_pipelines": "list_projects",
+    "list_explainers": "list_models",
 }
 
 
 class Node:
     """Read/act against a live Zetta node. Raises rather than returning a plausible empty result."""
 
-    def __init__(self) -> None:
-        self.base = os.environ["ZETTA_BASE_URL"].rstrip("/")
+    def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
+        # The CLI reads the environment; service mode passes the turn's workspace, which in lake is
+        # the customer's Zetta through lake (/workspaces/<customer>/zetta) and a lake key.
+        self.base = (base_url or os.environ["ZETTA_BASE_URL"]).rstrip("/")
         self.client = httpx.Client(
             base_url=self.base,
-            headers={"Authorization": f"Bearer {os.environ['ZETTA_TOKEN']}"},
+            headers={"Authorization": f"Bearer {token or os.environ['ZETTA_TOKEN']}"},
             timeout=180.0)
 
     def read(self, capability: str, **params: Any) -> Any:
+        # get_dataset names its table `dataset` and defaults the database the way lake does.
+        if capability == "get_dataset" and "dataset" in params:
+            name = str(params["dataset"])
+            if "." in name and "database" not in params:
+                database, table = name.split(".", 1)
+                params = {**params, "database": database, "dataset": table}
+            params.setdefault("database", "datasets")
         response = self.client.get(f"/v1/{capability}", params=params)
         response.raise_for_status()
         return response.json().get("value", response.json())
