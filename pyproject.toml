@@ -1,7 +1,7 @@
 [project]
 name = "agent-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "The Project Agent: builds and changes Pipelines by calling tools"
 readme = "README.md"
 authors = [
     { name = "Steve Sperandeo", email = "steve.sperandeo@gmail.com" }
@@ -14,6 +14,10 @@ dependencies = [
 
 [project.scripts]
 agent-project = "agent_project:main"
+agent-project-serve = "agent_project:serve"
+
+[dependency-groups]
+dev = ["pytest>=8"]
 
 [build-system]
 requires = ["uv_build>=0.11.7,<0.12.0"]
