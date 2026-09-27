@@ -52,6 +52,21 @@ def _builder() -> Path:
 
 @lru_cache(maxsize=1)
 def load() -> dict[str, Any]:
+    # An image carries the catalogue its build produced with this same builder (ZETTA_CATALOG),
+    # beside a catalog.source.json naming the commits it came from. Still derived, never retyped.
+    built = os.environ.get("ZETTA_CATALOG")
+    if built:
+        try:
+            catalogue = json.loads(Path(built).read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise Unavailable(f"ZETTA_CATALOG={built} cannot be read: {error}") from error
+        if not catalogue.get("solutions"):
+            raise Unavailable(f"ZETTA_CATALOG={built} has no solutions")
+        return catalogue
+    return _build()
+
+
+def _build() -> dict[str, Any]:
     """Build the catalogue from the plan markdown — the same builder the engine uses.
 
     Deriving it beats vendoring a copy: a catalogue snapshot in this repo would drift from the plan
