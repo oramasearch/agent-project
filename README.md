@@ -50,6 +50,12 @@ service on `PORT` (8080):
 - `PROJECT_MODEL` picks the model (default `gpt-4o`); `OPENAI_API_KEY` is the general Orama key
   the operator mounts.
 
+**The solutions catalogue** in the image is built at image-build time by zetta's own
+`scripts/build_catalog.py` from the solutions-designs plan, and passed as the named build context
+`catalog` (`catalog.json` and `catalog.source.json`, which records the zetta and solutions-designs
+commits). `ZETTA_CATALOG` points at it; without it the agent builds the catalogue from a bridge
+checkout, as before.
+
 **Image:** `Dockerfile`, published **private** as `oramasearch/agent-project` (created private
 before the first push; an anonymous read answers 404). The corpus is the named build context
 `corpus` (`agent-project-corpus/corpus`). Build it on the cluster BuildKit, never with Docker on a

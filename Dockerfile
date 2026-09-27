@@ -13,8 +13,10 @@ FROM python:3.12-slim
 RUN useradd --uid 10001 --create-home agent
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
+COPY --from=catalog catalog.json catalog.source.json /app/catalog/
 COPY --from=corpus project-sft-v1.jsonl /app/corpus/project-sft-v1.jsonl
 ENV PATH=/app/.venv/bin:$PATH \
+    ZETTA_CATALOG=/app/catalog/catalog.json \
     PROJECT_CORPUS=/app/corpus/project-sft-v1.jsonl \
     TRACE_DIR=/tmp/agent-project-traces \
     PORT=8080
