@@ -128,6 +128,9 @@ A turn whose `context` carries the current `pipeline` (nodes with attributes, ed
 the graph by `simulate`; `problems` names every one that would not apply. The reply is written from
 the checked edits, never by the model, so it cannot claim a change was made: the agent's lake key is
 read-only and lake applies the edits only when the person confirms on the pipeline page (lake#249).
-In build mode the pipeline returned is a design too (`applied: false`).
+In build mode the pipeline returned is a design too (`applied: false`). It always names `dataset`
+(the one table it trains on, `<database>.<table>`), `label` and `model_kind` (prompt v2; `normalize`
+takes `dataset` from `training_sources` when the model put it there, and a design missing one is a
+defect): lake applies the design to a project made from an Opportunity with them.
 
 [#989]: https://github.com/oramasearch/zetta/issues/989

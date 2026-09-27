@@ -132,3 +132,17 @@ def test_the_service_routes_a_change_request_to_a_proposal(tmp_path: Path):
                               node=FakeNode())
     assert answer["ok"] and answer["result"]["kind"] == "proposal"
     assert answer["result"]["reply"].startswith("Proposed, not applied")
+
+
+def test_a_design_always_names_its_table_label_and_model():
+    """lake applies a design to the project's pipeline by these names; one run put the table under
+    training_sources instead of dataset, and nothing was applied."""
+    from agent_project import agent
+    design = agent.normalize({"training_sources": ["datasets.ux_review_churn", "datasets.b"],
+                              "label": "churned", "model_kind": "gbdt"})
+    assert design["dataset"] == "datasets.ux_review_churn"
+    assert agent.normalize({"dataset": "datasets.a", "training_sources": ["datasets.b"]})["dataset"] \
+        == "datasets.a"
+    result = {"pipeline": agent.normalize({"model": True, "label": "churned"}), "trajectory": []}
+    problems = agent.defects({}, result)
+    assert "the design names no dataset" in problems and "the design names no model_kind" in problems
