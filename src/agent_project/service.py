@@ -23,6 +23,7 @@ from typing import Any
 from openai import OpenAI
 
 from agent_project.agent import build, defects
+from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
 from agent_project.retrieval import Corpus
 
@@ -61,7 +62,10 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
              client: OpenAI | None = None, node: Node | None = None) -> dict[str, Any]:
     """One build, recorded as a trace. A failure is returned, never raised past the handler."""
     task = task_from_turn(turn)
-    if not task.get("intent"):
+    editing = wants_edit(turn)
+    if editing and not (turn.get("request") or turn.get("message")):
+        return {"ok": False, "error": "a change request needs a request"}
+    if not editing and not task.get("intent"):
         return {"ok": False, "error": "a turn needs a request (or a task with an intent)"}
     owned_node = node is None
     if node is None:
@@ -72,12 +76,18 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                                           "zetta_base_url and zetta_token"}
         node = Node(base_url=base_url, token=token)
     try:
-        result = build(task, corpus, client or OpenAI(), turn.get("model") or settings.model, node,
-                       settings.shots)
+        if editing:
+            # agent-project#4: a change is a proposal lake applies on the person's confirmation.
+            result = propose(turn, client or OpenAI(), turn.get("model") or settings.model, node)
+        else:
+            result = build(task, corpus, client or OpenAI(), turn.get("model") or settings.model,
+                           node, settings.shots)
     finally:
         if owned_node:
             node.close()
-    result["defects"] = defects(task, result)
+    if not editing:
+        result["defects"] = defects(task, result)
+        result["applied"] = False
     trace_id = str(uuid.uuid4())
     settings.trace_dir.mkdir(parents=True, exist_ok=True)
     (settings.trace_dir / f"{trace_id}.json").write_text(json.dumps(

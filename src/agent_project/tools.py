@@ -36,7 +36,8 @@ BUILDS = {
     "recommendation": "Build a retrieval index. Args: index, grounded_in_data.",
     "add_explanation": "Attach an explainer. Args: explainer.",
     "serve": "Expose the result. Args: name.",
-    "update_pipeline": "Change an existing pipeline in place. Args: pipeline, change.",
+    "update_pipeline": "Describe a change to an existing pipeline (recorded in the pipeline you "
+                       "return; nothing is saved). Args: pipeline, change.",
 }
 
 
