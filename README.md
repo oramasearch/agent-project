@@ -101,4 +101,26 @@ When a `before` is supplied, **what must not change matters as much as what must
 silently rebuilds has thrown away the user's work even if the result would score well alone — so a
 mutation that changed nothing is reported as a defect.
 
+### Edit mode: a proposal, never a save (agent-project#4)
+
+A turn whose `context` carries the current `pipeline` (nodes with attributes, edges) with its
+`project` and `graph` is a **change request** (`edit.py`). The agent reads the workspace
+(`list_datasets`, `get_dataset`), then returns:
+
+```json
+{"kind": "proposal", "reply": "Proposed, not applied: …",
+ "proposal": {"project": "…", "graph": "…", "summary": "…",
+              "edits": [{"op": "remove_step", "step": "load_activity"}, …],
+              "steps": ["Remove step load_activity and its edges", …],
+              "run": {"dataset": "datasets.ux_review_churn", "holdout": 0.2},
+              "problems": [], "after": {"nodes": […], "edges": […]}}}
+```
+
+`edits` are lake's `edit_pipeline` operations (`add_step`, `rename_step`, `kind_step`,
+`remove_step`, `add_edge`, `remove_edge`, `set_attribute`, `rename`), each checked in order against
+the graph by `simulate`; `problems` names every one that would not apply. The reply is written from
+the checked edits, never by the model, so it cannot claim a change was made: the agent's lake key is
+read-only and lake applies the edits only when the person confirms on the pipeline page (lake#249).
+In build mode the pipeline returned is a design too (`applied: false`).
+
 [#989]: https://github.com/oramasearch/zetta/issues/989
