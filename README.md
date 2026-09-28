@@ -51,6 +51,11 @@ service on `PORT` (8080):
   `plan_features` for every methodology composed at the chosen level. It returns
   `result.foundation` for the person to review; only lake's later `confirm_solution` call may
   create the solution. Missing policy predicate columns stay in `missing_predicates`.
+- **Project results can be handed to ApplicationAgent.** A scored list, forecast, or segment table
+  with its result tables and model metadata gains an `app_handoff` proposal. The agent reads Lake's
+  App and build state, passes those exact outputs to an `agent-application` turn of kind `app`, and
+  waits for a person to confirm the handoff. It never calls App or build mutations and never
+  deploys an App itself.
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
@@ -93,7 +98,8 @@ and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and
 methodology behavior, feature planning and methodology-changing edits; `tests/test_solutions.py`:
 runnable and preview modules, sketch refusal, old-engine discovery, policy approval boundaries and
 measured readout operation; `tests/test_foundations.py`: S-1 predicate evidence and S-5 forecast
-decision-source proposals).
+decision-source proposals; `tests/test_apps.py`: Lake App/build reads, result handoff, credential
+scrubbing, and confirmation-only writes).
 
 ## Solutions come from the workspace
 

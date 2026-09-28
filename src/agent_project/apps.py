@@ -46,6 +46,16 @@ PROPOSED_ONLY_ACTIONS = frozenset({
     "cancel_build",
 })
 
+RESULT_KINDS = frozenset({
+    "scored_list",
+    "ranked_list",
+    "scores",
+    "forecast",
+    "forecast_table",
+    "segment_table",
+    "segments",
+})
+
 
 class LakeReader(Protocol):
     """The read half of Lake used by the Project Agent."""
@@ -203,21 +213,71 @@ def _json_value(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _turn_values(turn: dict[str, Any]) -> dict[str, Any]:
+    task = turn.get("task")
+    source = task if isinstance(task, dict) else turn
+    context = source.get("context")
+    if not isinstance(context, dict):
+        context = turn.get("context")
+    if not isinstance(context, dict):
+        context = {}
+    return {**source, **context, "customer_id": turn.get("customer_id") or context.get("customer_id")}
+
+
+def handoff_inputs(turn: dict[str, Any]) -> dict[str, Any] | None:
+    """Return exact app-worthy outputs, or None when this turn has no result to hand off."""
+    values = _turn_values(turn)
+    results = values.get("results")
+    if not isinstance(results, dict):
+        return None
+    kind = results.get("kind") or results.get("type") or values.get("result_kind")
+    normalized_kind = str(kind or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized_kind not in RESULT_KINDS:
+        return None
+
+    tables = results.get("tables") or values.get("result_tables") or values.get("output_tables")
+    if isinstance(tables, str):
+        tables = [tables]
+    if not isinstance(tables, list) or not tables:
+        return None
+
+    model = results.get("model") if "model" in results else values.get("model")
+    project = values.get("project")
+    if not isinstance(project, str) or not project or model is None:
+        return None
+
+    return {
+        "project": project,
+        "tables": tables,
+        "model": model,
+        "results": {**results, "kind": normalized_kind},
+        "target": {
+            key: values[key]
+            for key in ("app_id", "build_id")
+            if isinstance(values.get(key), str) and values[key]
+        },
+        "read_context": values,
+    }
+
+
 def application_agent_proposal(
         project: str,
         tables: list[Any],
         model: Any,
         results: dict[str, Any],
-        evidence: Evidence) -> dict[str, Any]:
+        evidence: Evidence,
+        target: dict[str, str] | None = None) -> dict[str, Any]:
     """Return the exact agent_turn a person may confirm; do not start it here."""
     context = {
         "project": project,
         "tables": tables,
         "model": model,
         "results": results,
+        **(target or {}),
     }
+    action = f"Change App {target['app_id']}" if target and target.get("app_id") else "Build a data app"
     message = (
-        f"Build a data app for project {project} over result tables {_json_value(tables)}. "
+        f"{action} for project {project} over result tables {_json_value(tables)}. "
         f"Use the project's model metadata {_json_value(model)} and preserve the result meaning "
         "described in context. Return an ApplicationAgent proposal for review; do not deploy it."
     )
@@ -235,4 +295,33 @@ def application_agent_proposal(
         },
         "inputs": context,
         "evidence": evidence.public(),
+    }
+
+
+def attach_handoff(
+        turn: dict[str, Any],
+        result: dict[str, Any],
+        lake: LakeReader) -> dict[str, Any]:
+    """Attach a confirmation-only ApplicationAgent offer to an app-worthy project result."""
+    inputs = handoff_inputs(turn)
+    if inputs is None:
+        return result
+    evidence = read_state(lake, inputs["read_context"])
+    proposal = application_agent_proposal(
+        inputs["project"],
+        inputs["tables"],
+        inputs["model"],
+        inputs["results"],
+        evidence,
+        inputs["target"],
+    )
+    reply = str(result.get("reply") or "").strip()
+    offer = (
+        "These results can support a data app. Proposed, not started: have ApplicationAgent "
+        "build it from the result tables and model after a person confirms this handoff."
+    )
+    return {
+        **result,
+        "reply": f"{reply} {offer}".strip(),
+        "app_handoff": proposal,
     }

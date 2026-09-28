@@ -7,6 +7,15 @@ result meaning, and project. A person confirms that proposal before Lake starts 
 ApplicationAgent then returns its own file and App proposal for a separate review. The Project
 Agent never writes an App or deploys one.
 
+When the turn names an existing `app_id`, that identifier is included in the proposed context and
+the request asks ApplicationAgent to change that App. Without one, it asks ApplicationAgent to
+build a new data app.
+
+The runtime offers this for result kinds `scored_list`, `ranked_list`, `scores`, `forecast`,
+`forecast_table`, `segment_table`, and `segments` (hyphens and spaces normalize to underscores).
+The turn must supply a project, one or more result tables, and model metadata. Training metrics or
+a pipeline design with no materialized result do not trigger an App offer.
+
 ## Lake evidence
 
 Apps and builds are Lake resources, not workspace Zetta resources. The Project Agent uses the
@@ -31,3 +40,5 @@ the Project Agent does not receive an App action method and cannot deploy itself
 After a person confirms the handoff, Lake sends the initial read-only `app` task to
 `agent-application`. Only a later ApplicationAgent task whose context contains the exact reviewed
 `confirmed_proposal` receives repository writes, `create_app`, and `deploy_app`.
+
+The trace clears both `lake_token` and `zetta_token`; neither delegated credential is retained.

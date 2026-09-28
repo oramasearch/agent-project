@@ -118,7 +118,7 @@ def test_a_runnable_methodology_is_analyzed_planned_and_compiled(
 
     assert result["pipeline"]["methodology"] == identifier
     assert result["pipeline"]["model_kind"] == model_kind
-    assert result["prompt_version"] == "v4"
+    assert result["prompt_version"] == "v5"
     assert not agent.defects({"intent": intent}, result)
     assert node.calls[0][1] == "list_solutions"
     assert node.calls[1][1] == "list_methodologies"
