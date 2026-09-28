@@ -26,7 +26,7 @@ from agent_project import catalog, methodologies, solutions, tools
 from agent_project.node import Node, describe
 from agent_project.retrieval import Corpus
 
-PROMPT_VERSION = "v5"
+PROMPT_VERSION = "v6"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_CALLS = 12
 
