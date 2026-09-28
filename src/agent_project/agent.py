@@ -22,11 +22,11 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import catalog, tools, validate
+from agent_project import catalog, methodologies, tools
 from agent_project.node import Node, describe
 from agent_project.retrieval import Corpus
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_CALLS = 12
 
@@ -69,6 +69,7 @@ def _situation(task: dict[str, Any]) -> dict[str, Any]:
             "persona": profile.get("persona"),
             "datasets": [f"{table.get('database')}.{table.get('name')}"
                          for table in profile.get("tables") or []],
+            "project": task.get("project"),
             "intent": task.get("intent"),
             "methodology": task.get("methodology"),
             "before": task.get("before")}
@@ -89,16 +90,23 @@ def _finished(text: str | None) -> dict[str, Any] | None:
 def build(task: dict[str, Any], corpus: Corpus, client: OpenAI, model: str, node: Node | None,
           k: int = 2) -> dict[str, Any]:
     """Walk a trajectory and return what was built, alongside the trajectory that built it."""
+    registry = methodologies.read(node)
     # Retrieval reads the FULL profile — it runs locally and never reaches the model, so matching
     # on column names costs the agent nothing it would otherwise have had to discover.
     neighbours = corpus.nearest(task, k)
     system = ((PROMPTS / f"{PROMPT_VERSION}.md").read_text()
               + catalog.as_context() + _shots(neighbours))
+    situation = {**_situation(task), "methodology_registry": registry.public(),
+                 "registry_observation": registry.observation()}
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": json.dumps(_situation(task))}]
+        {"role": "user", "content": json.dumps(situation)}]
 
-    trajectory: list[dict[str, Any]] = []
+    trajectory: list[dict[str, Any]] = [{
+        "call": "list_methodologies",
+        "args": {},
+        "observation": registry.observation(),
+    }]
     answer: dict[str, Any] | None = None
 
     for _ in range(MAX_CALLS):
@@ -141,8 +149,27 @@ def build(task: dict[str, Any], corpus: Corpus, client: OpenAI, model: str, node
         if answer is not None:
             break
 
-    return {"pipeline": normalize((answer or {}).get("pipeline")),
-            "reply": (answer or {}).get("reply"),
+    pipeline = normalize((answer or {}).get("pipeline"))
+    declined = (answer or {}).get("declined")
+    reply = (answer or {}).get("reply")
+    identifier = pipeline.get("methodology") if isinstance(pipeline, dict) else None
+    entry = registry.entry(identifier)
+    if pipeline is not None and identifier and (entry is None or entry.get("runnable") is not True):
+        declined = methodologies.decline(registry, identifier)
+        pipeline = None
+        reply = methodologies.decline_reply(declined)
+    elif pipeline is None and isinstance(declined, dict):
+        declined = methodologies.decline(
+            registry,
+            declined.get("methodology"),
+            declined.get("reason"),
+        )
+        reply = methodologies.decline_reply(declined)
+
+    return {"pipeline": pipeline,
+            "reply": reply,
+            "declined": declined,
+            "methodology_registry": registry.public(),
             "trajectory": trajectory,
             "few_shot_from": [e.get("example_id", "?") for e in neighbours],
             "prompt_version": PROMPT_VERSION}
@@ -169,22 +196,92 @@ def normalize(pipeline: Any) -> Any:
     return pipeline
 
 
+def _methodology_call_defects(design: dict[str, Any],
+                              trajectory: list[dict[str, Any]]) -> list[str]:
+    """Check that the live data and compiler calls support the returned design."""
+    problems: list[str] = []
+    identifier = design.get("methodology")
+    dataset = design.get("dataset")
+    for required in ("analyze_dataset", "plan_features", "compile_intent"):
+        if not any(step.get("call") == required for step in trajectory):
+            problems.append(f"the design did not call {required}")
+
+    for call in ("analyze_dataset", "plan_features"):
+        steps = [step for step in trajectory if step.get("call") == call]
+        if steps and steps[-1].get("args", {}).get("dataset") != dataset:
+            problems.append(f"{call} did not inspect dataset {dataset}")
+    for call in ("plan_features", "compile_intent"):
+        steps = [step for step in trajectory if step.get("call") == call]
+        if steps and steps[-1].get("args", {}).get("methodology") != identifier:
+            problems.append(f"{call} did not use methodology {identifier}")
+
+    compile_steps = [step for step in trajectory if step.get("call") == "compile_intent"]
+    if compile_steps:
+        args = compile_steps[-1].get("args", {})
+        for field in ("project", "intent"):
+            if not args.get(field):
+                problems.append(f"compile_intent names no {field}")
+    for step in trajectory:
+        if step.get("call") in {"analyze_dataset", "plan_features", "compile_intent"}:
+            observation = str(step.get("observation") or "")
+            if "FAILED:" in observation or "not_supported" in observation:
+                problems.append(f"{step['call']} did not succeed: {observation}")
+    return problems
+
+
 def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
     """Everything wrong with what was built. Empty means it is usable."""
     problems = tools.undisciplined(result["trajectory"], task.get("before"))
+    registry_value = result.get("methodology_registry") or {}
+    registry = methodologies.Registry(
+        entries=registry_value.get("methodologies") or [],
+        old_engine=registry_value.get("old_engine") is True,
+        failure=registry_value.get("failure"),
+    )
     if result["pipeline"] is None:
-        return [*problems, "no pipeline was produced"]
+        declined = result.get("declined")
+        if not isinstance(declined, dict):
+            return [*problems, "no pipeline was produced"]
+        identifier = declined.get("methodology")
+        entry = registry.entry(identifier)
+        if entry is not None and entry.get("runnable") is True:
+            problems.append(f"declined runnable methodology {identifier}")
+        expected = methodologies.decline(registry, identifier, declined.get("reason"))
+        issue = str(expected.get("issue") or "")
+        reply = str(result.get("reply") or "")
+        if issue and issue not in reply:
+            problems.append(f"the decline does not name {issue}")
+        if registry.old_engine and "M-1" not in reply:
+            problems.append("an old-engine decline does not say that only M-1 runs")
+        return problems
 
     design = result["pipeline"]
-    if isinstance(design, dict) and design.get("model", True):
-        # What lake needs to apply the design to a project's pipeline.
-        for field in ("dataset", "label", "model_kind"):
-            if not design.get(field):
-                problems.append(f"the design names no {field}")
+    if not isinstance(design, dict):
+        return [*problems, "the pipeline is not an object"]
+    for field in ("dataset", "methodology", "model_kind"):
+        if not design.get(field):
+            problems.append(f"the design names no {field}")
+    if not any(design.get(field) for field in ("features", "feature_plan", "transform_first")):
+        problems.append("the design does not state its features or transform-first step")
 
-    methodology = task.get("methodology")
-    if methodology:
-        problems += validate.shape_defects(methodology, result["pipeline"])
+    identifier = design.get("methodology")
+    entry = registry.entry(identifier)
+    if entry is None:
+        problems.append(f"{identifier!r} is absent from this turn's methodology registry")
+    elif entry.get("runnable") is not True:
+        problems.append(f"{identifier} is not runnable ({entry.get('issue') or 'no issue named'})")
+    else:
+        model_kinds = entry.get("model_kinds") or []
+        if model_kinds and design.get("model_kind") not in model_kinds:
+            problems.append(f"{design.get('model_kind')!r} is not a model kind for {identifier}")
+        inputs = entry.get("inputs") or []
+        needs_label = any(item.get("required") is True
+                          and item.get("role") in {"label", "target", "outcome"}
+                          for item in inputs if isinstance(item, dict))
+        if needs_label and not design.get("label"):
+            problems.append(f"the {identifier} design names no label")
+
+    problems += _methodology_call_defects(design, result["trajectory"])
 
     # A mutation must change the thing asked for and leave the rest alone.
     before = task.get("before")

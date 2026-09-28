@@ -54,6 +54,7 @@ def task_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
     return {"profile": context.get("profile") or {"industry": context.get("industry"),
                                                   "persona": context.get("persona"),
                                                   "tables": context.get("tables") or []},
+            "project": context.get("project"),
             "intent": turn.get("request") or turn.get("message") or "",
             "methodology": turn.get("methodology"),
             "before": turn.get("before")}

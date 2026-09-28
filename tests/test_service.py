@@ -18,9 +18,22 @@ class FakeNode:
 
     def read(self, capability: str, **params):
         self.reads.append((capability, params))
+        if capability == "list_methodologies":
+            return {"methodologies": [{
+                "id": "M-1", "name": "Churn", "model_kinds": ["gbdt"],
+                "inputs": [{"role": "label", "required": True}], "runnable": True,
+            }]}
         if capability == "list_datasets":
             return {"datasets": [{"database": "datasets", "name": "accounts"}]}
+        if capability == "analyze_dataset":
+            return {"grain": "snapshot", "keys": ["account_id"]}
+        if capability == "plan_features":
+            return {"features": ["tenure"]}
         return {"columns": [{"name": "churned", "type": "bool", "null_fraction": 0.0}]}
+
+    def act(self, capability: str, **params):
+        assert capability == "compile_intent"
+        return {"methodology": params["methodology"], "nodes": ["connect", "model"]}
 
     def close(self) -> None:
         pass
@@ -45,11 +58,22 @@ class ScriptedClient:
 
     def __init__(self) -> None:
         self.replies = [
-            completion(tool_calls=[call("list_datasets", {})]),
+            completion(tool_calls=[call("list_datasets", {},
+                                        because="list_methodologies returned runnable M-1")]),
             completion(tool_calls=[call("get_dataset", {"dataset": "datasets.accounts"},
                                         because="list_datasets returned accounts")]),
-            completion(content='```json\n{"pipeline": {"model": {"label": "churned"}}, '
-                               '"reply": "Built."}\n```'),
+            completion(tool_calls=[call("analyze_dataset", {"dataset": "datasets.accounts"},
+                                        because="get_dataset returned churned")]),
+            completion(tool_calls=[call("plan_features", {
+                "dataset": "datasets.accounts", "methodology": "M-1"},
+                because="analyze_dataset returned snapshot grain")]),
+            completion(tool_calls=[call("compile_intent", {
+                "project": "churn", "intent": "predict churn", "methodology": "M-1"},
+                because="plan_features returned tenure")]),
+            completion(content='```json\n{"pipeline": {"dataset": "datasets.accounts", '
+                               '"label": "churned", "methodology": "M-1", '
+                               '"model_kind": "gbdt", "features": ["tenure"]}, '
+                               '"reply": "Designed."}\n```'),
         ]
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
@@ -71,14 +95,17 @@ def test_a_plain_request_becomes_a_task_that_must_discover_its_data():
     assert task["profile"]["tables"] == []
 
 
-def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path):
+def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path, monkeypatch):
+    monkeypatch.setattr("agent_project.agent.catalog.as_context", lambda: "")
     node = FakeNode()
     answer = service.run_turn({"request": "predict churn"}, settings(tmp_path),
                               Corpus(tmp_path / "missing.jsonl"), ScriptedClient(), node)
     assert answer["ok"]
-    assert answer["result"]["pipeline"] == {"model": {"label": "churned"}}
-    assert [step["call"] for step in answer["result"]["trajectory"]] == ["list_datasets",
-                                                                         "get_dataset"]
+    assert answer["result"]["pipeline"]["methodology"] == "M-1"
+    assert [step["call"] for step in answer["result"]["trajectory"]] == [
+        "list_methodologies", "list_datasets", "get_dataset", "analyze_dataset",
+        "plan_features", "compile_intent",
+    ]
     trace = json.loads((tmp_path / "traces" / f"{answer['trace_id']}.json").read_text())
     assert trace["agent"] == "agent-project"
     assert trace["turn"]["zetta_token"] is None, "a trace never keeps the caller's key"
@@ -86,8 +113,12 @@ def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path):
 
 def test_reads_go_to_the_nodes_real_capabilities():
     from agent_project.node import READ_CAPABILITY
-    assert READ_CAPABILITY == {"list_datasets": "list_datasets", "get_dataset": "get_dataset",
-                               "list_pipelines": "list_projects", "list_explainers": "list_models"}
+    assert READ_CAPABILITY == {
+        "list_methodologies": "list_methodologies", "list_datasets": "list_datasets",
+        "get_dataset": "get_dataset", "analyze_dataset": "analyze_dataset",
+        "plan_features": "plan_features", "list_pipelines": "list_projects",
+        "list_explainers": "list_models",
+    }
 
 
 def test_a_turn_without_a_request_or_a_workspace_is_refused(tmp_path):

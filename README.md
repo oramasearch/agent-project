@@ -18,8 +18,8 @@ export ZETTA_BASE_URL=... ZETTA_TOKEN=...
 uv run agent-project task.json
 ```
 
-`task.json` carries a `profile`, an `intent`, optionally a `methodology` and — for a change to an
-existing pipeline — a `before`.
+`task.json` carries a `profile`, an `intent`, optionally a `project` and requested `methodology`,
+and — for a change to an existing pipeline — a `before`.
 
 `--offline` skips the node for prompt work. Every observation then says so and reports that nothing
 ran; it never invents a plausible result, because an offline run must not be mistakable for a real
@@ -48,8 +48,10 @@ service on `PORT` (8080):
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
-  The reads are the node's real capabilities: `list_datasets`, `get_dataset`, and
-  `list_projects` / `list_models` behind `list_pipelines` / `list_explainers`.
+  The reads are the node's real capabilities: `list_methodologies`, `list_datasets`,
+  `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
+  `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
+  methodology's engine-owned pipeline shape.
 - **`AGENT_SERVICE_TOKEN`**, when set, is required as `Authorization: Bearer <token>`: only lake
   calls the service.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.
@@ -77,7 +79,26 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
 trace without the key, health without the corpus; `tests/test_lake_bus.py`: receive, claim, run
-and publish on the bus).
+and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and old-engine
+methodology behavior, feature planning and methodology-changing edits).
+
+## Methodologies come from the workspace
+
+Every build and edit turn starts by reading `list_methodologies`. The agent chooses only an entry
+whose live response says `runnable: true`; its design names that `methodology` id and one of the
+entry's `model_kinds`. It does not carry a local copy of the 21-method portfolio. If the requested
+method is not runnable, the answer declines it and names the registry's tracking issue instead of
+substituting churn or a generic graph.
+
+After choosing a method, the agent reads `analyze_dataset`, then `plan_features`. The design states
+the planned features or the transform that needs approval first, such as aggregating event data to
+an entity snapshot. It calls `compile_intent` with the same methodology and uses the returned graph
+as the required pipeline shape. Edit mode compares the existing graph with that compiled shape and
+returns checked `edit_pipeline` operations for a person to confirm.
+
+An older workspace may answer `unknown_capability` to `list_methodologies`. That compatibility
+response means only M-1 churn / GBDT classification runs. Requests for other methods are declined
+with that engine limitation stated explicitly.
 
 ## What makes this a trajectory and not a lookup
 
@@ -129,8 +150,9 @@ the graph by `simulate`; `problems` names every one that would not apply. The re
 the checked edits, never by the model, so it cannot claim a change was made: the agent's lake key is
 read-only and lake applies the edits only when the person confirms on the pipeline page (lake#249).
 In build mode the pipeline returned is a design too (`applied: false`). It always names `dataset`
-(the one table it trains on, `<database>.<table>`), `label` and `model_kind` (prompt v2; `normalize`
-takes `dataset` from `training_sources` when the model put it there, and a design missing one is a
-defect): lake applies the design to a project made from an Opportunity with them.
+(the one table it trains on, `<database>.<table>`), `methodology`, `model_kind`, and its features or
+transform-first step (prompt v3; `normalize` takes `dataset` from `training_sources` when the model
+put it there). It names `label` when the registry says the method requires a label, target or
+outcome. lake applies the reviewed design to a project made from an Opportunity with those fields.
 
 [#989]: https://github.com/oramasearch/zetta/issues/989
