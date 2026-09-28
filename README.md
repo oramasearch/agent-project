@@ -1,7 +1,8 @@
 # agent-project
 
-Builds and changes Pipelines by **calling tools**. Takes a profile and an intent — the shape
-`agent-autosuggest` emits — and walks a trajectory against a live node.
+Builds and operates catalogue Solutions, and builds or changes Pipelines, by **calling tools**.
+It takes a profile and an intent — the shape `agent-autosuggest` emits — and walks a trajectory
+against a live node.
 
 ## Not a trained model yet
 
@@ -18,8 +19,8 @@ export ZETTA_BASE_URL=... ZETTA_TOKEN=...
 uv run agent-project task.json
 ```
 
-`task.json` carries a `profile`, an `intent`, optionally a `project` and requested `methodology`,
-and — for a change to an existing pipeline — a `before`.
+`task.json` carries a `profile`, an `intent`, optionally a `project`, requested `solution`, `level`,
+`sources`, or requested `methodology`, and — for a change to an existing pipeline — a `before`.
 
 `--offline` skips the node for prompt work. Every observation then says so and reports that nothing
 ran; it never invents a plausible result, because an offline run must not be mistakable for a real
@@ -37,7 +38,7 @@ service on `PORT` (8080):
 | Route | What it does |
 |---|---|
 | `GET /healthz` | `200` with the corpus size, or `503` when the corpus is missing: answering zero-shot would be a different agent |
-| `POST /v1/turn` | One build. Body: `{"request": "...", "context": {...}}` (or `{"task": {...}}` in the CLI's shape), plus `zetta_base_url` and `zetta_token` for the workspace. Answers `{ok, trace_id, result: {pipeline, reply, trajectory, defects}}`; `422` with `error` when the build failed |
+| `POST /v1/turn` | One solution operation, methodology build or edit proposal. Body: `{"request": "...", "context": {...}}` (or `{"task": {...}}` in the CLI's shape), plus `zetta_base_url` and `zetta_token` for the workspace. Answers `{ok, trace_id, result}`; `422` with `error` when the turn failed |
 
 - **Turns arrive on lake's agent bus** ([lake#269](https://github.com/oramasearch/lake/issues/269),
   lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls `receive_agent_tasks` through lake,
@@ -48,7 +49,11 @@ service on `PORT` (8080):
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
-  The reads are the node's real capabilities: `list_methodologies`, `list_datasets`,
+  A turn first reads `list_solutions`; an older engine's `unknown_capability` response selects the
+  methodology-only compatibility path. Solution reads include `get_solution`, `get_policy`,
+  `get_experiment`, `list_ledger`, `get_monitor`, and `get_roi_readout`; solution actions include
+  `create_solution`, `run_solution`, `decide`, and approval of an explicitly authorized A1
+  decision. Methodology reads are `list_methodologies`, `list_datasets`,
   `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
   `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
   methodology's engine-owned pipeline shape.
@@ -80,11 +85,31 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
 trace without the key, health without the corpus; `tests/test_lake_bus.py`: receive, claim, run
 and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and old-engine
-methodology behavior, feature planning and methodology-changing edits).
+methodology behavior, feature planning and methodology-changing edits; `tests/test_solutions.py`:
+runnable and preview modules, sketch refusal, old-engine discovery, policy approval boundaries and
+measured readout operation).
+
+## Solutions come from the workspace
+
+On a current engine, a build turn chooses only from the live `list_solutions` response and then
+reads the selected module with `get_solution`. It builds the composed graph with `create_solution`,
+runs exactly the graph that action returned, and reads policy, holdout, ledger, monitor and measured
+readout state before explaining the result. Optional operations that answer `unknown_capability`
+are reported as not deployed yet.
+
+A module can build and run as a preview while its entry says `runnable: false` and lists missing
+production components. The answer names those issues and does not describe the preview as
+production-ready. Band-B entries with `status: sketch` are refused with their live promotion
+condition.
+
+The live entry also supplies the proposed policy template, autonomy defaults, guardrails, data-role
+definitions and measurement definition. These are returned for owner sign-off. Policy changes are
+before/after proposals only: the agent exposes no policy-create or policy-update tool. An A1
+decision can be approved only when the turn carries matching explicit owner approval.
 
 ## Methodologies come from the workspace
 
-Every build and edit turn starts by reading `list_methodologies`. The agent chooses only an entry
+Every methodology build and edit turn reads `list_methodologies`. The agent chooses only an entry
 whose live response says `runnable: true`; its design names that `methodology` id and one of the
 entry's `model_kinds`. It does not carry a local copy of the 21-method portfolio. If the requested
 method is not runnable, the answer declines it and names the registry's tracking issue instead of

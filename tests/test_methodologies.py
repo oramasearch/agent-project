@@ -49,6 +49,8 @@ class FakeNode:
 
     def read(self, capability, **params):
         self.calls.append(("read", capability, params))
+        if capability == "list_solutions":
+            return {"error": {"code": "unknown_capability"}}
         if capability == "list_methodologies":
             return self.registry
         if capability == "list_datasets":
@@ -116,9 +118,10 @@ def test_a_runnable_methodology_is_analyzed_planned_and_compiled(
 
     assert result["pipeline"]["methodology"] == identifier
     assert result["pipeline"]["model_kind"] == model_kind
-    assert result["prompt_version"] == "v3"
+    assert result["prompt_version"] == "v4"
     assert not agent.defects({"intent": intent}, result)
-    assert node.calls[0][1] == "list_methodologies"
+    assert node.calls[0][1] == "list_solutions"
+    assert node.calls[1][1] == "list_methodologies"
     assert node.calls[-1] == (
         "act", "compile_intent",
         {"project": "customer-project", "intent": intent, "methodology": identifier},
@@ -143,7 +146,7 @@ def test_an_unsupported_methodology_is_declined_with_the_registry_issue(tmp_path
     assert result["declined"]["issue"] == "zetta#1042"
     assert "zetta#1042" in result["reply"]
     assert not agent.defects(task, result)
-    assert [call[1] for call in node.calls] == ["list_methodologies"]
+    assert [call[1] for call in node.calls] == ["list_solutions", "list_methodologies"]
 
 
 def test_an_old_engine_reports_that_only_m1_runs(tmp_path, monkeypatch):

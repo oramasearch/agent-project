@@ -22,7 +22,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import lake_bus
+from agent_project import lake_bus, solutions
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
@@ -57,6 +57,10 @@ def task_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
             "project": context.get("project"),
             "intent": turn.get("request") or turn.get("message") or "",
             "methodology": turn.get("methodology"),
+            "solution": turn.get("solution") or context.get("solution"),
+            "level": turn.get("level") or context.get("level"),
+            "sources": turn.get("sources") or context.get("sources"),
+            "approval": turn.get("approval") or context.get("approval"),
             "before": turn.get("before")}
 
 
@@ -78,12 +82,19 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                                           "zetta_base_url and zetta_token"}
         node = Node(base_url=base_url, token=token)
     try:
+        solution_registry = solutions.read(node)
         if editing:
             # agent-project#4: a change is a proposal lake applies on the person's confirmation.
             result = propose(turn, client or OpenAI(), turn.get("model") or settings.model, node)
+            result["solution_registry"] = solution_registry.public()
+            result["reads"].insert(0, {
+                "call": "list_solutions",
+                "args": {},
+                "observation": solution_registry.observation(),
+            })
         else:
             result = build(task, corpus, client or OpenAI(), turn.get("model") or settings.model,
-                           node, settings.shots)
+                           node, settings.shots, solution_registry)
     finally:
         if owned_node:
             node.close()

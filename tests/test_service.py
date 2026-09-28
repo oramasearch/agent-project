@@ -18,6 +18,8 @@ class FakeNode:
 
     def read(self, capability: str, **params):
         self.reads.append((capability, params))
+        if capability == "list_solutions":
+            return {"error": {"code": "unknown_capability"}}
         if capability == "list_methodologies":
             return {"methodologies": [{
                 "id": "M-1", "name": "Churn", "model_kinds": ["gbdt"],
@@ -106,6 +108,7 @@ def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path, monkeypatc
         "list_methodologies", "list_datasets", "get_dataset", "analyze_dataset",
         "plan_features", "compile_intent",
     ]
+    assert node.reads[0][0] == "list_solutions"
     trace = json.loads((tmp_path / "traces" / f"{answer['trace_id']}.json").read_text())
     assert trace["agent"] == "agent-project"
     assert trace["turn"]["zetta_token"] is None, "a trace never keeps the caller's key"
@@ -114,6 +117,10 @@ def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path, monkeypatc
 def test_reads_go_to_the_nodes_real_capabilities():
     from agent_project.node import READ_CAPABILITY
     assert READ_CAPABILITY == {
+        "list_solutions": "list_solutions", "get_solution": "get_solution",
+        "get_policy": "get_policy", "get_experiment": "get_experiment",
+        "list_ledger": "list_ledger", "get_monitor": "get_monitor",
+        "get_roi_readout": "get_roi_readout",
         "list_methodologies": "list_methodologies", "list_datasets": "list_datasets",
         "get_dataset": "get_dataset", "analyze_dataset": "analyze_dataset",
         "plan_features": "plan_features", "list_pipelines": "list_projects",
