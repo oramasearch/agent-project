@@ -205,6 +205,11 @@ def test_a_runnable_solution_builds_runs_and_explains_live_evidence():
         "items": ["policy_proposal", "label_definitions"],
     }
     assert result["operations"]["get_roi_readout"]["value"]["readout"]
+    assert result["readout"] == {
+        "status": "available",
+        "value": {"readout": {"incrementality": "measured against holdout"}},
+        "explanation": "The preview ran and the holdout readout is available.",
+    }
     assert result["prompt_version"] == "v4"
     assert not solutions.defects(result)
     assert [item[1] for item in node.calls[:3]] == [
@@ -292,6 +297,9 @@ def test_a_policy_change_is_proposed_for_approval_and_never_applied():
     assert result["kind"] == "policy_proposal"
     assert result["approval_required"] is True
     assert result["reply"].startswith("Proposed, not applied")
+    assert result["policy_change"]["before"] == {
+        "policy": {"version": 2, "autonomy": "A1"},
+    }
     assert all(item[0] == "read" for item in node.calls)
     assert not solutions.defects(result)
 

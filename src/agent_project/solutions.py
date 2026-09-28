@@ -337,6 +337,23 @@ def _operation_values(trajectory: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _readout(operations: dict[str, Any], explanation: str) -> dict[str, Any]:
+    observed = operations.get("get_roi_readout") or {}
+    value = observed.get("value")
+    observation = str(observed.get("observation") or "")
+    if value is not None:
+        status = "available"
+    elif "not deployed yet" in observation:
+        status = "not_deployed_yet"
+    else:
+        status = "unavailable"
+    return {
+        "status": status,
+        "value": value,
+        "explanation": explanation,
+    }
+
+
 def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[dict[str, Any]],
                      answer: dict[str, Any]) -> dict[str, Any]:
     created_step = next(
@@ -349,13 +366,16 @@ def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[
         if isinstance(policy_change, dict):
             identifier = policy_change.get("solution") or task.get("solution")
             entry = _observed_entry(identifier, trajectory) or registry.entry(identifier) or {}
+            operations = _operation_values(trajectory)
+            current = (operations.get("get_policy") or {}).get("value")
+            policy_change = {**policy_change, "before": current}
             return {
                 "kind": "policy_proposal",
                 "solution": {"id": identifier},
                 "policy_change": policy_change,
                 "policy_proposal": _policy_proposal(entry),
                 "approval_required": True,
-                "operations": _operation_values(trajectory),
+                "operations": operations,
                 "reply": (
                     "Proposed, not applied: review this policy change and approve it as the "
                     "solution owner."
@@ -373,6 +393,8 @@ def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[
     preview = created.get("preview") is True
     ready = entry.get("runnable") is True and not missing
     reply = str(answer.get("reply") or "").strip()
+    operations = _operation_values(trajectory)
+    readout = _readout(operations, reply)
     if missing:
         issues = ", ".join(str(item.get("issue") or item.get("name")) for item in missing)
         reply = (reply + " " if reply else "") + (
@@ -399,7 +421,8 @@ def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[
             "required": True,
             "items": ["policy_proposal", "label_definitions"],
         },
-        "operations": _operation_values(trajectory),
+        "operations": operations,
+        "readout": readout,
         "reply": reply,
     }
 
@@ -541,6 +564,9 @@ def defects(result: dict[str, Any]) -> list[str]:
     signoff = result.get("owner_signoff") or {}
     if signoff.get("required") is not True:
         problems.append("the policy and label definitions do not require owner sign-off")
+    readout = result.get("readout") or {}
+    if not readout.get("explanation"):
+        problems.append("the measured readout has no explanation")
     for item in solution.get("missing") or []:
         issue = str(item.get("issue") or "")
         if issue and issue not in str(result.get("reply") or ""):

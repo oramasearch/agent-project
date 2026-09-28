@@ -30,8 +30,13 @@ For a selected module, the turn follows this order:
 
 The returned policy proposal uses the live entry's policy template, autonomy defaults and
 guardrails. Label definitions use its data-role descriptions and measurement design. Both are
-marked for owner sign-off. A requested policy change reads the current policy and returns a
-before/after proposal; it neither rebuilds the solution nor applies the policy.
+marked for owner sign-off. A requested policy change takes its `before` value directly from the
+`get_policy` observation and returns a proposed replacement; it neither rebuilds the solution nor
+applies the policy.
+
+The result pairs the exact `get_roi_readout` value with the model's explanation. Its status is
+`available`, `not_deployed_yet`, or `unavailable`, so callers can distinguish measured evidence
+from an operation the workspace does not provide.
 
 `approve_decision` is separate from policy editing: it releases an A1 decision only when the turn
 contains matching explicit owner approval for that decision id.
