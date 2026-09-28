@@ -53,9 +53,25 @@ class FakeNode:
 
     def read(self, capability, **params):
         self.reads.append((capability, params))
+        if capability == "list_methodologies":
+            return {"methodologies": [{
+                "id": "M-1", "name": "Churn", "model_kinds": ["gbdt"],
+                "inputs": [{"role": "label", "required": True}], "runnable": True,
+            }, {
+                "id": "M-3", "name": "Segmentation / clustering",
+                "model_kinds": ["kmeans"], "inputs": [], "runnable": True,
+            }]}
         if capability == "list_datasets":
             return {"datasets": [{"database": "datasets", "name": "ux_review_churn"}]}
+        if capability == "analyze_dataset":
+            return {"grain": "snapshot", "keys": ["account_id"]}
+        if capability == "plan_features":
+            return {"features": ["plan"]}
         return {"columns": ["account_id", "churned", "plan"], "rows": 200}
+
+    def act(self, capability, **params):
+        assert capability == "compile_intent"
+        return {"methodology": params["methodology"], "nodes": ["connect", "model"]}
 
     def close(self):
         pass
@@ -67,12 +83,26 @@ def turn(request="Drop the activity step, train on ux_review_churn, hold out 20%
 
 
 ANSWER = {"summary": "Train on ux_review_churn only, with a 20% hold-out",
+          "methodology": "M-1", "model_kind": "gbdt",
           "edits": [{"op": "remove_step", "step": "load_activity"},
                     {"op": "set_attribute", "step": "load_customers", "name": "source",
                      "value": "datasets"},
                     {"op": "set_attribute", "step": "load_customers", "name": "table",
                      "value": "ux_review_churn"}],
           "run": {"dataset": "datasets.ux_review_churn", "holdout": 0.2}}
+
+
+def workspace_calls(answer=ANSWER):
+    return [
+        completion(tool_calls=[call("list_datasets", {})]),
+        completion(tool_calls=[call("analyze_dataset", {"dataset": "datasets.ux_review_churn"})]),
+        completion(tool_calls=[call("plan_features", {
+            "dataset": "datasets.ux_review_churn", "methodology": answer["methodology"]})]),
+        completion(tool_calls=[call("compile_intent", {
+            "project": "ux-review-churn", "intent": "change it",
+            "methodology": answer["methodology"]})]),
+        completion(content=json.dumps(answer)),
+    ]
 
 
 def test_a_change_request_is_recognized_by_its_pipeline_context():
@@ -102,11 +132,12 @@ def test_simulate_names_every_edit_that_would_not_apply():
 def test_a_proposal_reads_the_data_and_never_claims_it_was_applied():
     # The model insists it changed the pipeline; the reply is written from the edits, not by it.
     claimed = {**ANSWER, "summary": "I updated the pipeline in place"}
-    client = Scripted(completion(tool_calls=[call("list_datasets", {})]),
-                      completion(content="```json\n" + json.dumps(claimed) + "\n```"))
+    replies = workspace_calls(claimed)
+    replies[-1] = completion(content="```json\n" + json.dumps(claimed) + "\n```")
+    client = Scripted(*replies)
     node = FakeNode()
     result = edit.propose(turn(), client, "gpt-5.5", node)
-    assert node.reads and node.reads[0][0] == "list_datasets"
+    assert node.reads and node.reads[0][0] == "list_methodologies"
     assert result["kind"] == "proposal"
     assert result["reply"].startswith("Proposed, not applied")
     proposal = result["proposal"]
@@ -121,13 +152,14 @@ def test_an_edit_that_would_not_apply_is_reported_not_proposed_as_fine():
            "run": {"holdout": 3}}
     result = edit.propose(turn(), Scripted(completion(content=json.dumps(bad))), "m", FakeNode())
     assert "would not apply" in result["reply"] and "Nothing was changed" in result["reply"]
-    assert len(result["proposal"]["problems"]) == 2
+    assert len(result["proposal"]["problems"]) == 5
+    assert "the proposal did not call compile_intent" in result["proposal"]["problems"]
 
 
 def test_the_service_routes_a_change_request_to_a_proposal(tmp_path: Path):
     settings = service.Settings()
     settings.trace_dir = tmp_path
-    client = Scripted(completion(content=json.dumps(ANSWER)))
+    client = Scripted(*workspace_calls())
     answer = service.run_turn(turn(), settings, Corpus(tmp_path / "none.jsonl"), client=client,
                               node=FakeNode())
     assert answer["ok"] and answer["result"]["kind"] == "proposal"

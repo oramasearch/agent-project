@@ -19,16 +19,20 @@ from typing import Any
 
 import httpx
 
-# Which Zetta capability a tool reads from. The build tools do not read — they record an intent
-# that lands in the pipeline — so only the reads are mapped. These are the node's real `/v1` reads
-# (GET /v1/<capability>): the Pipelines on a node live on its projects, and a node has no explainer
-# catalogue, so `list_explainers` observes the models whose drivers can be explained.
+# Which Zetta capability a tool reaches. Reads use GET; compile_intent is the one engine action and
+# uses POST. Other build tools record an intent that lands in the returned design. Pipelines on a
+# node live on its projects, and a node has no explainer catalogue, so `list_explainers` observes
+# the models whose drivers can be explained.
 READ_CAPABILITY = {
+    "list_methodologies": "list_methodologies",
     "list_datasets": "list_datasets",
     "get_dataset": "get_dataset",
+    "analyze_dataset": "analyze_dataset",
+    "plan_features": "plan_features",
     "list_pipelines": "list_projects",
     "list_explainers": "list_models",
 }
+ACT_CAPABILITY = {"compile_intent": "compile_intent"}
 
 
 class Node:
@@ -55,6 +59,12 @@ class Node:
         response.raise_for_status()
         return response.json().get("value", response.json())
 
+    def act(self, capability: str, **params: Any) -> Any:
+        """Run one Zetta action through the workspace-compatible endpoint."""
+        response = self.client.post(f"/v1/{capability}", json=params)
+        response.raise_for_status()
+        return response.json().get("value", response.json())
+
     def close(self) -> None:
         self.client.close()
 
@@ -70,13 +80,17 @@ def describe(node: Node | None, call: str, args: dict[str, Any]) -> str:
         return (f"OFFLINE: {call} did not run. No observation is available — do not state anything "
                 "about the data on the strength of this call.")
 
-    capability = READ_CAPABILITY.get(call)
-    if capability is None:
-        # A build step. It records what the agent decided, and the pipeline is where that lands.
+    read_capability = READ_CAPABILITY.get(call)
+    act_capability = ACT_CAPABILITY.get(call)
+    if read_capability is None and act_capability is None:
+        # A local design step. It records what the agent decided in the returned pipeline.
         return f"{call} recorded with {args or 'no arguments'}."
 
     try:
-        value = node.read(capability, **args)
+        if read_capability is not None:
+            value = node.read(read_capability, **args)
+        else:
+            value = node.act(act_capability, **args)
     except httpx.HTTPStatusError as error:
         return f"{call} FAILED: {error.response.status_code} {error.response.text[:200]}"
     except httpx.HTTPError as error:

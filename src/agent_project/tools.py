@@ -19,12 +19,16 @@ from typing import Any
 # surface are the same set. An agent trained on `temporal_split` and deployed against a runtime
 # that never offers it would fail in a way no eval would show.
 READS = {
+    "list_methodologies": "The live methodology registry. Takes no arguments.",
     "list_datasets": "What data is captured. Takes no arguments. This is where a trajectory starts.",
     "get_dataset": "The columns, types and null fractions of one dataset. Args: dataset.",
+    "analyze_dataset": "Semantic types, grain, keys, joins and leakage suspects. Args: dataset.",
+    "plan_features": "A methodology-specific feature plan or transform-first result. Args: dataset, methodology.",
     "list_pipelines": "The pipelines that already exist. Takes no arguments.",
     "list_explainers": "The explainers available to attach. Takes no arguments.",
 }
 BUILDS = {
+    "compile_intent": "Compile the engine-owned pipeline shape. Args: project, intent, methodology.",
     "clean": "Drop or repair rows. Args: drop_null, as_of.",
     "merge": "Join two datasets. Args: left, right, on.",
     "aggregate": "Roll rows up to an entity. Args: by, measures.",
