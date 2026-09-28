@@ -24,6 +24,13 @@ import httpx
 # node live on its projects, and a node has no explainer catalogue, so `list_explainers` observes
 # the models whose drivers can be explained.
 READ_CAPABILITY = {
+    "list_solutions": "list_solutions",
+    "get_solution": "get_solution",
+    "get_policy": "get_policy",
+    "get_experiment": "get_experiment",
+    "list_ledger": "list_ledger",
+    "get_monitor": "get_monitor",
+    "get_roi_readout": "get_roi_readout",
     "list_methodologies": "list_methodologies",
     "list_datasets": "list_datasets",
     "get_dataset": "get_dataset",
@@ -32,7 +39,13 @@ READ_CAPABILITY = {
     "list_pipelines": "list_projects",
     "list_explainers": "list_models",
 }
-ACT_CAPABILITY = {"compile_intent": "compile_intent"}
+ACT_CAPABILITY = {
+    "create_solution": "create_solution",
+    "run_solution": "run_solution",
+    "decide": "decide",
+    "approve_decision": "approve_decision",
+    "compile_intent": "compile_intent",
+}
 
 
 class Node:
