@@ -14,6 +14,33 @@ available to a solution turn are:
 The tool surface deliberately omits `create_policy` and `update_policy`. A policy definition or
 change is a proposal for an owner to approve, never an unreviewed mutation by this agent.
 
+## Start this solution foundation
+
+Lake's **Start this solution** flow sends a bus turn whose kind is `solution:<project>`. This is
+separate from the build-and-operate flow below: the task credential is read-only, the turn does not
+use `create_solution`, and the returned `result.foundation` remains a proposal until the person
+uses lake's `confirm_solution` action.
+
+The turn reads the selected module with `get_solution`, then reads the selected table with
+`analyze_dataset` and `get_dataset`. It selects every methodology whose `minimum_level` is at or
+below the requested level and calls `plan_features` for each one. The proposal contains:
+
+- `sources`: the person's database and table plus a role mapping for every selected methodology;
+- `snapshot`: source and target tables, entity and time columns, and `as_of`;
+- `dataset`: the observed entity and label plus feature columns supported by the primary plan;
+- `decision_source`: the selected primary methodology's documented output mapping when it is not
+  M-1 (M-4 forecasts use output `forecast`, entity `series`, and score `point_forecast`);
+- `predicates`: policy predicate names mapped only to same-named observed columns;
+- `missing_predicates`: every policy predicate for which the table supplied no column evidence;
+- the person's unchanged `delivery` and `roi_model` values.
+
+For a sampled time column, `as_of` uses the latest value among the most populated observed periods;
+a numeric analysis with no populated-period evidence uses its observed maximum. If analysis cannot
+support an entity, time, label, feature, methodology role, cutoff, or non-M-1 output contract, the
+agent does not choose one: the reply explains what remains unmapped. In particular, absent S-1
+`in_collections`, `open_complaint`, and `vulnerable` flags remain missing rather than becoming
+`false`.
+
 ## Build and operate flow
 
 For a selected module, the turn follows this order:

@@ -46,6 +46,11 @@ service on `PORT` (8080):
   would, and reports with `publish_agent_event`: `progress`, then the answer or `failed`. It starts
   when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` (this agent's own bus credential) and
   `AGENT_BUS_AGENT`. No request to lake ever waits on the agent.
+- **Start this solution is a read-only proposal.** A bus turn whose kind is
+  `solution:<project>` reads `get_solution`, `analyze_dataset`, `get_dataset`, and
+  `plan_features` for every methodology composed at the chosen level. It returns
+  `result.foundation` for the person to review; only lake's later `confirm_solution` call may
+  create the solution. Missing policy predicate columns stay in `missing_predicates`.
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
@@ -87,7 +92,8 @@ trace without the key, health without the corpus; `tests/test_lake_bus.py`: rece
 and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and old-engine
 methodology behavior, feature planning and methodology-changing edits; `tests/test_solutions.py`:
 runnable and preview modules, sketch refusal, old-engine discovery, policy approval boundaries and
-measured readout operation).
+measured readout operation; `tests/test_foundations.py`: S-1 predicate evidence and S-5 forecast
+decision-source proposals).
 
 ## Solutions come from the workspace
 
