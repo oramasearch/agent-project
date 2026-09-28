@@ -22,6 +22,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from agent_project import lake_bus
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
@@ -152,5 +153,7 @@ def serve() -> int:
     port = int(os.environ.get("PORT", "8080"))
     print(json.dumps({"agent": "agent-project", "listening": port,
                       "examples": len(corpus.examples)}), flush=True)
+    # Turns arrive as tasks on lake's agent bus (lake#269); /v1/turn stays for direct calls.
+    lake_bus.start_from_env(lambda turn: run_turn(turn, settings, corpus), "agent-project")
     ThreadingHTTPServer(("0.0.0.0", port), make_handler(settings, corpus)).serve_forever()
     return 0

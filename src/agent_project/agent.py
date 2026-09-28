@@ -26,7 +26,7 @@ from agent_project import catalog, tools, validate
 from agent_project.node import Node, describe
 from agent_project.retrieval import Corpus
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_CALLS = 12
 
@@ -141,11 +141,32 @@ def build(task: dict[str, Any], corpus: Corpus, client: OpenAI, model: str, node
         if answer is not None:
             break
 
-    return {"pipeline": (answer or {}).get("pipeline"),
+    return {"pipeline": normalize((answer or {}).get("pipeline")),
             "reply": (answer or {}).get("reply"),
             "trajectory": trajectory,
             "few_shot_from": [e.get("example_id", "?") for e in neighbours],
             "prompt_version": PROMPT_VERSION}
+
+
+TABLE_KEYS = ("training_sources", "datasets", "sources", "training_data")
+
+
+def normalize(pipeline: Any) -> Any:
+    """The fields lake applies a design with, always under the same names (lake applies it to the
+    project's pipeline): `dataset` is the one table it trains on, "<database>.<table>", taken from
+    the first of `training_sources` (or `datasets`, `sources`) when the model named it there."""
+    if not isinstance(pipeline, dict):
+        return pipeline
+    if not isinstance(pipeline.get("dataset"), str) or not pipeline.get("dataset"):
+        for key in TABLE_KEYS:
+            tables = pipeline.get(key)
+            if isinstance(tables, list) and tables and isinstance(tables[0], str):
+                pipeline = {**pipeline, "dataset": tables[0]}
+                break
+            if isinstance(tables, str) and tables:
+                pipeline = {**pipeline, "dataset": tables}
+                break
+    return pipeline
 
 
 def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
@@ -153,6 +174,13 @@ def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
     problems = tools.undisciplined(result["trajectory"], task.get("before"))
     if result["pipeline"] is None:
         return [*problems, "no pipeline was produced"]
+
+    design = result["pipeline"]
+    if isinstance(design, dict) and design.get("model", True):
+        # What lake needs to apply the design to a project's pipeline.
+        for field in ("dataset", "label", "model_kind"):
+            if not design.get(field):
+                problems.append(f"the design names no {field}")
 
     methodology = task.get("methodology")
     if methodology:

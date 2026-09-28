@@ -39,6 +39,12 @@ service on `PORT` (8080):
 | `GET /healthz` | `200` with the corpus size, or `503` when the corpus is missing: answering zero-shot would be a different agent |
 | `POST /v1/turn` | One build. Body: `{"request": "...", "context": {...}}` (or `{"task": {...}}` in the CLI's shape), plus `zetta_base_url` and `zetta_token` for the workspace. Answers `{ok, trace_id, result: {pipeline, reply, trajectory, defects}}`; `422` with `error` when the build failed |
 
+- **Turns arrive on lake's agent bus** ([lake#269](https://github.com/oramasearch/lake/issues/269),
+  lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls `receive_agent_tasks` through lake,
+  claims each task (its body arrives with the task's own credential), runs it as a `/v1/turn`
+  would, and reports with `publish_agent_event`: `progress`, then the answer or `failed`. It starts
+  when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` (this agent's own bus credential) and
+  `AGENT_BUS_AGENT`. No request to lake ever waits on the agent.
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
@@ -70,7 +76,8 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 ```
 
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
-trace without the key, health without the corpus).
+trace without the key, health without the corpus; `tests/test_lake_bus.py`: receive, claim, run
+and publish on the bus).
 
 ## What makes this a trajectory and not a lookup
 
@@ -121,6 +128,9 @@ A turn whose `context` carries the current `pipeline` (nodes with attributes, ed
 the graph by `simulate`; `problems` names every one that would not apply. The reply is written from
 the checked edits, never by the model, so it cannot claim a change was made: the agent's lake key is
 read-only and lake applies the edits only when the person confirms on the pipeline page (lake#249).
-In build mode the pipeline returned is a design too (`applied: false`).
+In build mode the pipeline returned is a design too (`applied: false`). It always names `dataset`
+(the one table it trains on, `<database>.<table>`), `label` and `model_kind` (prompt v2; `normalize`
+takes `dataset` from `training_sources` when the model put it there, and a design missing one is a
+defect): lake applies the design to a project made from an Opportunity with them.
 
 [#989]: https://github.com/oramasearch/zetta/issues/989
