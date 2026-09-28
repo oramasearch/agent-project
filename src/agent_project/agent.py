@@ -22,11 +22,11 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import catalog, methodologies, tools
+from agent_project import catalog, methodologies, solutions, tools
 from agent_project.node import Node, describe
 from agent_project.retrieval import Corpus
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_CALLS = 12
 
@@ -88,8 +88,14 @@ def _finished(text: str | None) -> dict[str, Any] | None:
 
 
 def build(task: dict[str, Any], corpus: Corpus, client: OpenAI, model: str, node: Node | None,
-          k: int = 2) -> dict[str, Any]:
+          k: int = 2, solution_registry: solutions.Registry | None = None) -> dict[str, Any]:
     """Walk a trajectory and return what was built, alongside the trajectory that built it."""
+    solution_registry = solution_registry or solutions.read(node)
+    wants_solution = bool(task.get("solution")) or not task.get("methodology")
+    if wants_solution and solution_registry.entries:
+        return solutions.operate(task, client, model, node, solution_registry)
+    if wants_solution and not solution_registry.old_engine:
+        return solutions.unavailable(solution_registry, task.get("solution"))
     registry = methodologies.read(node)
     # Retrieval reads the FULL profile — it runs locally and never reaches the model, so matching
     # on column names costs the agent nothing it would otherwise have had to discover.
@@ -231,6 +237,9 @@ def _methodology_call_defects(design: dict[str, Any],
 
 def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
     """Everything wrong with what was built. Empty means it is usable."""
+    if result.get("kind") in {"solution", "policy_proposal", "declined"} \
+            and "solution_registry" in result:
+        return solutions.defects(result)
     problems = tools.undisciplined(result["trajectory"], task.get("before"))
     registry_value = result.get("methodology_registry") or {}
     registry = methodologies.Registry(

@@ -18,6 +18,8 @@ class FakeNode:
 
     def read(self, capability: str, **params):
         self.reads.append((capability, params))
+        if capability == "list_solutions":
+            return {"error": {"code": "unknown_capability"}}
         if capability == "list_methodologies":
             return {"methodologies": [{
                 "id": "M-1", "name": "Churn", "model_kinds": ["gbdt"],
@@ -106,6 +108,7 @@ def test_a_turn_builds_against_the_node_and_records_a_trace(tmp_path, monkeypatc
         "list_methodologies", "list_datasets", "get_dataset", "analyze_dataset",
         "plan_features", "compile_intent",
     ]
+    assert node.reads[0][0] == "list_solutions"
     trace = json.loads((tmp_path / "traces" / f"{answer['trace_id']}.json").read_text())
     assert trace["agent"] == "agent-project"
     assert trace["turn"]["zetta_token"] is None, "a trace never keeps the caller's key"

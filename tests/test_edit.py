@@ -53,6 +53,8 @@ class FakeNode:
 
     def read(self, capability, **params):
         self.reads.append((capability, params))
+        if capability == "list_solutions":
+            return {"error": {"code": "unknown_capability"}}
         if capability == "list_methodologies":
             return {"methodologies": [{
                 "id": "M-1", "name": "Churn", "model_kinds": ["gbdt"],
