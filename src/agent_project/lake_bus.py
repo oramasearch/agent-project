@@ -116,7 +116,10 @@ def run_task(bus: LakeBus, handle: Callable[[dict[str, Any]], dict[str, Any]],
     except BusError as error:
         _log(task=task_id, progress_not_published=str(error))
     try:
-        answer = handle(claimed.get("body") or {})
+        body = dict(claimed.get("body") or {})
+        if claimed.get("kind"):
+            body["kind"] = claimed["kind"]
+        answer = handle(body)
     except Exception as error:  # a failed turn is an answer, not a dead worker
         answer = {"ok": False, "error": f"{type(error).__name__}: {error}"}
     if answer.get("ok"):

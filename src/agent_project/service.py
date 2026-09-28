@@ -22,7 +22,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import lake_bus, solutions
+from agent_project import foundation, lake_bus, solutions
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
@@ -69,6 +69,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     """One build, recorded as a trace. A failure is returned, never raised past the handler."""
     task = task_from_turn(turn)
     editing = wants_edit(turn)
+    proposing_foundation = str(turn.get("kind") or "").startswith("solution:")
     if editing and not (turn.get("request") or turn.get("message")):
         return {"ok": False, "error": "a change request needs a request"}
     if not editing and not task.get("intent"):
@@ -82,8 +83,17 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                                           "zetta_base_url and zetta_token"}
         node = Node(base_url=base_url, token=token)
     try:
-        solution_registry = solutions.read(node)
-        if editing:
+        if proposing_foundation:
+            try:
+                result = foundation.propose(turn, node)
+            except Exception as error:
+                return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+        else:
+            solution_registry = solutions.read(node)
+        if proposing_foundation:
+            result["defects"] = []
+            result["applied"] = False
+        elif editing:
             # agent-project#4: a change is a proposal lake applies on the person's confirmation.
             result = propose(turn, client or OpenAI(), turn.get("model") or settings.model, node)
             result["solution_registry"] = solution_registry.public()
@@ -98,7 +108,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     finally:
         if owned_node:
             node.close()
-    if not editing:
+    if not editing and not proposing_foundation:
         result["defects"] = defects(task, result)
         result["applied"] = False
     trace_id = str(uuid.uuid4())
