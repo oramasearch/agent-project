@@ -22,7 +22,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import apps, foundation, lake_bus, solutions
+from agent_project import apps, experiments, foundation, lake_bus, solutions
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
@@ -115,20 +115,25 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     if not editing and not proposing_foundation:
         result["defects"] = defects(task, result)
         result["applied"] = False
-    handoff = apps.handoff_inputs(turn)
-    if handoff is not None:
+    app_handoff = apps.handoff_inputs(turn)
+    experiment_handoff = experiments.handoff_inputs(turn, result)
+    if app_handoff is not None or experiment_handoff is not None:
         owned_lake = lake is None
         if lake is None:
             lake_url = turn.get("lake_url")
             lake_token = turn.get("lake_token")
             if not lake_url or not lake_token:
+                kind = "an App" if app_handoff is not None else "an Experiments"
                 return {
                     "ok": False,
-                    "error": "an App handoff needs lake_url and lake_token",
+                    "error": f"{kind} handoff needs lake_url and lake_token",
                 }
             lake = apps.Lake(str(lake_url), str(lake_token))
         try:
-            result = apps.attach_handoff(turn, result, lake)
+            if experiment_handoff is not None:
+                result = experiments.attach(turn, result, lake)
+            if app_handoff is not None:
+                result = apps.attach_handoff(turn, result, lake)
         finally:
             if owned_lake:
                 lake.close()

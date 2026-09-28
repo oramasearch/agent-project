@@ -56,6 +56,11 @@ service on `PORT` (8080):
   App and build state, passes those exact outputs to an `agent-application` turn of kind `app`, and
   waits for a person to confirm the handoff. It never calls App or build mutations and never
   deploys an App itself.
+- **Model selection can be handed to ExperimentsAgent.** A methodology pipeline with a trainable
+  model gains a read-only study check. The agent uses Lake's registered `list_experiments` and
+  `get_experiment_study` capabilities to explain an existing matching study; otherwise it returns
+  an unapplied `agent-experiments` turn proposal over the project's dataset, methodology and model
+  choices. A person confirms that handoff, the later study start, and any later trial promotion.
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
@@ -99,7 +104,8 @@ methodology behavior, feature planning and methodology-changing edits; `tests/te
 runnable and preview modules, sketch refusal, old-engine discovery, policy approval boundaries and
 measured readout operation; `tests/test_foundations.py`: S-1 predicate evidence and S-5 forecast
 decision-source proposals; `tests/test_apps.py`: Lake App/build reads, result handoff, credential
-scrubbing, and confirmation-only writes).
+scrubbing, and confirmation-only writes; `tests/test_experiments.py`: registered Lake study reads,
+existing-study explanations, model-selection handoffs, and confirmation boundaries).
 
 ## Solutions come from the workspace
 
@@ -132,6 +138,13 @@ the planned features or the transform that needs approval first, such as aggrega
 an entity snapshot. It calls `compile_intent` with the same methodology and uses the returned graph
 as the required pipeline shape. Edit mode compares the existing graph with that compiled shape and
 returns checked `edit_pipeline` operations for a person to confirm.
+
+The design's model kind is a provisional runnable baseline. For service turns that identify a
+project and customer, the runtime reads that project's studies. It explains a matching study from
+the complete durable record, or proposes an ExperimentsAgent turn to compare the methodology's
+model families and consequential hyperparameters. Neither the handoff nor the study starts without
+confirmation, and promotion requires its own later confirmation. See
+[`docs/experiments/README.md`](docs/experiments/README.md).
 
 An older workspace may answer `unknown_capability` to `list_methodologies`. That compatibility
 response means only M-1 churn / GBDT classification runs. Requests for other methods are declined
