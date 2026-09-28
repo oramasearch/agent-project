@@ -22,7 +22,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from agent_project import foundation, lake_bus, solutions
+from agent_project import apps, foundation, lake_bus, solutions
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
 from agent_project.node import Node
@@ -61,11 +61,15 @@ def task_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
             "level": turn.get("level") or context.get("level"),
             "sources": turn.get("sources") or context.get("sources"),
             "approval": turn.get("approval") or context.get("approval"),
+            "results": turn.get("results") or context.get("results"),
+            "result_tables": turn.get("result_tables") or context.get("result_tables"),
+            "model": context.get("model"),
             "before": turn.get("before")}
 
 
 def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
-             client: OpenAI | None = None, node: Node | None = None) -> dict[str, Any]:
+             client: OpenAI | None = None, node: Node | None = None,
+             lake: apps.LakeReader | None = None) -> dict[str, Any]:
     """One build, recorded as a trace. A failure is returned, never raised past the handler."""
     task = task_from_turn(turn)
     editing = wants_edit(turn)
@@ -111,11 +115,29 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     if not editing and not proposing_foundation:
         result["defects"] = defects(task, result)
         result["applied"] = False
+    handoff = apps.handoff_inputs(turn)
+    if handoff is not None:
+        owned_lake = lake is None
+        if lake is None:
+            lake_url = turn.get("lake_url")
+            lake_token = turn.get("lake_token")
+            if not lake_url or not lake_token:
+                return {
+                    "ok": False,
+                    "error": "an App handoff needs lake_url and lake_token",
+                }
+            lake = apps.Lake(str(lake_url), str(lake_token))
+        try:
+            result = apps.attach_handoff(turn, result, lake)
+        finally:
+            if owned_lake:
+                lake.close()
     trace_id = str(uuid.uuid4())
     settings.trace_dir.mkdir(parents=True, exist_ok=True)
     (settings.trace_dir / f"{trace_id}.json").write_text(json.dumps(
         {"trace_id": trace_id, "agent": "agent-project",
-         "at": datetime.now(timezone.utc).isoformat(), "turn": {**turn, "zetta_token": None},
+         "at": datetime.now(timezone.utc).isoformat(),
+         "turn": {**turn, "lake_token": None, "zetta_token": None},
          "task": task, "result": result}, indent=1, default=str))
     return {"ok": True, "trace_id": trace_id, "result": result}
 

@@ -18,7 +18,7 @@ from openai import OpenAI
 
 from agent_project.node import Node
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 PROMPT = Path(__file__).parent / "prompts" / f"{PROMPT_VERSION}.md"
 MAX_CALLS = 12
 

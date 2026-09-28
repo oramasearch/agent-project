@@ -210,7 +210,7 @@ def test_a_runnable_solution_builds_runs_and_explains_live_evidence():
         "value": {"readout": {"incrementality": "measured against holdout"}},
         "explanation": "The preview ran and the holdout readout is available.",
     }
-    assert result["prompt_version"] == "v4"
+    assert result["prompt_version"] == "v5"
     assert not solutions.defects(result)
     assert [item[1] for item in node.calls[:3]] == [
         "list_solutions", "get_solution", "create_solution",
