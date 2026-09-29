@@ -27,7 +27,8 @@ below the requested level and calls `plan_features` for each one. The proposal c
 
 - `sources`: the person's database and table plus a role mapping for every selected methodology;
 - `snapshot`: source and target tables, entity and time columns, and `as_of`;
-- `dataset`: the observed entity and label plus feature columns supported by the primary plan;
+- `dataset`: the observed entity and label plus the remaining numeric and categorical feature
+  columns after structural and policy columns are removed;
 - `decision_source`: the selected primary methodology's documented output mapping when it is not
   M-1 (M-4 forecasts use output `forecast`, entity `series`, and score `point_forecast`);
 - `predicates`: policy predicate names mapped only to same-named observed columns;
@@ -40,6 +41,14 @@ support an entity, time, label, feature, methodology role, cutoff, or non-M-1 ou
 agent does not choose one: the reply explains what remains unmapped. In particular, absent S-1
 `in_collections`, `open_complaint`, and `vulnerable` flags remain missing rather than becoming
 `false`.
+
+Entity selection prefers observed entity-key or identifier columns whose names identify customers,
+accounts, or ids, with high cardinality and repeated values across observed periods. Numeric
+measures are not accepted as entities even when their sampled values are unique. Feature selection
+excludes the entity, label, time, and every observed policy predicate; it retains the other observed
+numeric and categorical columns. M-2 uses the selected entity as `record_id` and a name-like column
+as `name`. When no name-like column was observed, the proposal leaves `name` unset and explains the
+missing `M-2.name` mapping for review.
 
 ## Build and operate flow
 

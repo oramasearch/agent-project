@@ -129,19 +129,70 @@ def _role_column(columns: list[dict[str, Any]], roles: set[str],
     return None
 
 
+def _entity_name_priority(name: str) -> int:
+    lowered = name.lower()
+    if lowered.endswith("_id") or lowered == "id":
+        return 3
+    if lowered in ENTITY_NAMES:
+        return 2
+    parts = set(re.split(r"[^a-z0-9]+", lowered))
+    if parts.intersection({"customer", "account"}):
+        return 1
+    return 0
+
+
+def _has_numeric_evidence(column: dict[str, Any]) -> bool:
+    quantiles = column.get("quantiles")
+    return isinstance(quantiles, dict) and bool(quantiles)
+
+
+def _is_measure(column: dict[str, Any]) -> bool:
+    semantic_type = str(column.get("semantic_type") or "").lower()
+    if semantic_type == "numeric":
+        return True
+    return _entity_name_priority(str(column["name"])) == 0 and _has_numeric_evidence(column)
+
+
 def _entity_column(analysis: dict[str, Any], columns: list[dict[str, Any]]) -> str | None:
-    available = _column_names(columns)
+    key_uniqueness = {}
     keys = analysis.get("candidate_keys") or []
-    ordered = sorted(
-        (item for item in keys if isinstance(item, dict)),
-        key=lambda item: float(item.get("uniqueness") or 0),
-        reverse=True,
-    )
-    for key in ordered:
+    for key in keys:
+        if not isinstance(key, dict):
+            continue
         names = key.get("columns") or []
-        if len(names) == 1 and str(names[0]).lower() in available:
-            return available[str(names[0]).lower()]
-    return _role_column(columns, {"entity", "entity_key"}, ENTITY_NAMES)
+        if len(names) == 1:
+            key_uniqueness[str(names[0]).lower()] = float(key.get("uniqueness") or 0)
+
+    candidates = []
+    for position, column in enumerate(columns):
+        name = str(column["name"])
+        roles = set(column.get("role_candidates") or [])
+        semantic_type = str(column.get("semantic_type") or "").lower()
+        priority = _entity_name_priority(name)
+        if roles.intersection({"label", "target", "outcome", "time"}):
+            continue
+        if not priority and not roles.intersection({"entity", "entity_key"}):
+            if semantic_type != "identifier":
+                continue
+        if _is_measure(column):
+            continue
+        distinct_count = int(column.get("distinct_count") or 0)
+        distinct_ratio = float(column.get("distinct_ratio") or 0)
+        repeated = bool(analysis.get("grain") in {"event", "snapshot", "time_series"}
+                        and 0 < distinct_ratio < 0.98)
+        score = (
+            priority,
+            bool(roles.intersection({"entity", "entity_key"})),
+            repeated,
+            distinct_count,
+            distinct_ratio,
+            key_uniqueness.get(name.lower(), 0),
+            -position,
+        )
+        candidates.append((score, name))
+    if not candidates:
+        return None
+    return max(candidates)[1]
 
 
 def _latest_complete_period(column: dict[str, Any]) -> Any:
@@ -185,6 +236,24 @@ def _planned_columns(plan: dict[str, Any], available: set[str],
             if name not in result:
                 result.append(name)
     return result
+
+
+def _feature_columns(columns: list[dict[str, Any]], planned: list[str],
+                     excluded: set[str]) -> list[str]:
+    features = []
+    for column in columns:
+        name = str(column["name"])
+        if name in excluded:
+            continue
+        semantic_type = str(column.get("semantic_type") or "").lower()
+        supported = semantic_type in {"categorical", "numeric"}
+        if semantic_type == "identifier" and _is_measure(column):
+            supported = True
+        if not semantic_type and name in planned:
+            supported = True
+        if supported:
+            features.append(name)
+    return features
 
 
 def _policy_predicate_names(entry: dict[str, Any]) -> list[str]:
@@ -336,12 +405,15 @@ def propose(turn: dict[str, Any], node: Node) -> dict[str, Any]:
 
     primary_item = next((item for item in selected if item.get("role") == "primary"), selected[0])
     primary = primary_item["methodology"]
-    excluded = {name for name in (entity, label, time) if name}
-    features = _planned_columns(plans.get(primary, {}), available, excluded)
+    predicates, missing_predicates = _predicate_evidence(entry, columns)
+    excluded = {name for name in (entity, label, time, *predicates.values()) if name}
+    primary_plan = _planned_columns(plans.get(primary, {}), available, excluded)
+    features = _feature_columns(columns, primary_plan, excluded)
     sources: dict[str, Any] = {"source": database, "table": table}
     for item in selected:
         identifier = item["methodology"]
-        method_features = _planned_columns(plans.get(identifier, {}), available, excluded)
+        method_plan = _planned_columns(plans.get(identifier, {}), available, excluded)
+        method_features = _feature_columns(columns, method_plan, excluded)
         sources[identifier] = _methodology_mapping(
             identifier,
             database,
@@ -370,7 +442,6 @@ def propose(turn: dict[str, Any], node: Node) -> dict[str, Any]:
     if label:
         dataset_roles["label_column"] = label
 
-    predicates, missing_predicates = _predicate_evidence(entry, columns)
     foundation: dict[str, Any] = {
         "sources": sources,
         "snapshot": snapshot,

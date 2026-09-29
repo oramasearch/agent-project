@@ -126,6 +126,73 @@ class FoundationNode:
         pass
 
 
+class Issue18Node(FoundationNode):
+    def __init__(self) -> None:
+        super().__init__("S-1")
+
+    def read(self, capability: str, **params):
+        if capability != "plan_features":
+            return super().read(capability, **params)
+        self.calls.append(("read", capability, params))
+        features = [
+            "in_collections",
+            "open_complaint",
+            "vulnerable",
+            "tenure_months",
+            "usage",
+        ]
+        return {
+            "status": "ready",
+            "methodology": params["methodology"],
+            "entries": [{"source_columns": features, "features": features}],
+            "excluded": [],
+            "transform_required": None,
+        }
+
+    def analysis(self) -> dict:
+        return {
+            "grain": "snapshot",
+            "candidate_keys": [
+                {"columns": ["monthly_value"], "uniqueness": 1.0},
+                {"columns": ["customer_id", "observed_at"], "uniqueness": 1.0},
+            ],
+            "columns": [
+                column(
+                    "customer_id",
+                    ["entity_key"],
+                    semantic_type="identifier",
+                    distinct_count=40,
+                    distinct_ratio=0.5,
+                ),
+                column(
+                    "observed_at",
+                    ["time"],
+                    semantic_type="datetime",
+                    distinct_count=2,
+                    distinct_ratio=0.025,
+                    top_values=[
+                        {"value": "2026-09-30T00:00:00Z", "count": 40},
+                        {"value": "2026-08-31T00:00:00Z", "count": 40},
+                    ],
+                ),
+                column("usage", semantic_type="numeric", quantiles={"max": 98.0}),
+                column("tenure_months", semantic_type="numeric", quantiles={"max": 72.0}),
+                column("complaints", semantic_type="numeric", quantiles={"max": 8.0}),
+                column(
+                    "monthly_value",
+                    semantic_type="identifier",
+                    distinct_count=80,
+                    distinct_ratio=1.0,
+                    quantiles={"min": 19.99, "max": 249.95},
+                ),
+                column("in_collections", semantic_type="boolean"),
+                column("open_complaint", semantic_type="boolean"),
+                column("vulnerable", semantic_type="boolean"),
+                column("churned", ["label"], semantic_type="boolean"),
+            ],
+        }
+
+
 def settings(tmp_path: Path) -> service.Settings:
     value = service.Settings()
     value.trace_dir = tmp_path / "traces"
@@ -214,6 +281,28 @@ def test_s1_foundation_does_not_invent_absent_exclusion_flags(tmp_path):
         "open_complaint",
         "vulnerable",
     ]
+
+
+def test_s1_foundation_prefers_customer_id_and_keeps_predicates_out_of_features(tmp_path):
+    answer = run(tmp_path, Issue18Node(), turn("S-1"))
+
+    result = answer["result"]
+    foundation = result["foundation"]
+    expected_features = ["usage", "tenure_months", "complaints", "monthly_value"]
+    assert foundation["snapshot"]["entity_column"] == "customer_id"
+    assert foundation["dataset"] == {
+        "entity_column": "customer_id",
+        "label_column": "churned",
+        "feature_columns": expected_features,
+    }
+    assert foundation["sources"]["M-1"]["entity_column"] == "customer_id"
+    assert foundation["sources"]["M-1"]["feature_columns"] == expected_features
+    assert foundation["sources"]["M-2"] == {
+        "source": "datasets",
+        "table": "observations",
+        "record_id": "customer_id",
+    }
+    assert "No observed column mapping supports M-2.name." in result["reply"]
 
 
 def test_s5_foundation_names_the_forecast_output_as_its_decision_source(tmp_path):
