@@ -122,9 +122,11 @@ def test_a_runnable_methodology_is_analyzed_planned_and_compiled(
     assert not agent.defects({"intent": intent}, result)
     assert node.calls[0][1] == "list_solutions"
     assert node.calls[1][1] == "list_methodologies"
+    # Zetta's compile_intent accepts no `intent`: the model's goal text is not forwarded
+    # (agent-project#20); the compiler reads the project's captured intent.
     assert node.calls[-1] == (
         "act", "compile_intent",
-        {"project": "customer-project", "intent": intent, "methodology": identifier},
+        {"project": "customer-project", "methodology": identifier},
     )
 
 

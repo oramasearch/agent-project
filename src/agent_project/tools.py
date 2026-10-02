@@ -28,7 +28,7 @@ READS = {
     "list_explainers": "The explainers available to attach. Takes no arguments.",
 }
 BUILDS = {
-    "compile_intent": "Compile the engine-owned pipeline shape. Args: project, intent, methodology.",
+    "compile_intent": "Compile the engine-owned pipeline shape. Args: project, methodology (optional: solution, hints).",
     "clean": "Drop or repair rows. Args: drop_null, as_of.",
     "merge": "Join two datasets. Args: left, right, on.",
     "aggregate": "Roll rows up to an entity. Args: by, measures.",

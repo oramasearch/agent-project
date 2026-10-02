@@ -13,7 +13,7 @@ For a runnable method, the turn follows this order:
 2. `list_datasets` / `get_dataset` identify the real source.
 3. `analyze_dataset` reports semantic types, grain, keys, joins and leakage suspects.
 4. `plan_features {dataset, methodology}` returns concrete features or a transform-first result.
-5. `compile_intent {project, intent, methodology}` returns the methodology-owned graph.
+5. `compile_intent {project, methodology}` (Zetta compiles the project's captured intent and accepts no `intent` argument) returns the methodology-owned graph.
 6. The reviewed design names `dataset`, `methodology`, `model_kind`, and features or the required
    transform. A label is required only when the registry marks a label, target or outcome input as
    required.

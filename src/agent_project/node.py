@@ -48,6 +48,12 @@ ACT_CAPABILITY = {
 }
 
 
+# The arguments Zetta's compile_intent accepts (its input schema refuses any other field). The
+# model may still name the person's goal as `intent`; the compiler reads the project's captured
+# intent instead, so only these are sent (agent-project#20).
+COMPILE_INTENT_ARGS = frozenset({"project", "input_id", "name", "methodology", "solution", "hints"})
+
+
 class Node:
     """Read/act against a live Zetta node. Raises rather than returning a plausible empty result."""
 
@@ -103,6 +109,8 @@ def describe(node: Node | None, call: str, args: dict[str, Any]) -> str:
         if read_capability is not None:
             value = node.read(read_capability, **args)
         else:
+            if act_capability == "compile_intent":
+                args = {key: value for key, value in args.items() if key in COMPILE_INTENT_ARGS}
             value = node.act(act_capability, **args)
     except httpx.HTTPStatusError as error:
         return f"{call} FAILED: {error.response.status_code} {error.response.text[:200]}"
