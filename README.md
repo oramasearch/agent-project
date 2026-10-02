@@ -71,7 +71,9 @@ service on `PORT` (8080):
   decision. Methodology reads are `list_methodologies`, `list_datasets`,
   `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
   `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
-  methodology's engine-owned pipeline shape.
+  methodology's engine-owned pipeline shape. Only the arguments Zetta's compile_intent accepts
+  (`project`, `methodology`, `solution`, `hints`, `name`, `input_id`) are sent; the model's own
+  goal text is not, because the compiler reads the project's captured intent (#20).
 - **`AGENT_SERVICE_TOKEN`**, when set, is required as `Authorization: Bearer <token>`: only lake
   calls the service.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.

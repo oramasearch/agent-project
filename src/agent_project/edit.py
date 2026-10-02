@@ -49,7 +49,7 @@ that names its id, issue and what must become runnable. Never reshape another me
 unsupported substitute.
 
 Before proposing graph edits, call `analyze_dataset`, then `plan_features` with the chosen
-methodology, then `compile_intent` with project, intent and methodology. Treat the compiled graph as
+methodology, then `compile_intent` with project and methodology. Treat the compiled graph as
 the required shape. Your edits must make the current graph match it, including the model step's
 model_kind and any methodology-specific steps. If feature planning says transform first, include
 that transform in the proposal instead of featurizing the raw data badly.
@@ -102,9 +102,9 @@ WORKSPACE_TOOLS = [
     {"type": "function", "function": {
         "name": "compile_intent", "description": "Compile the methodology's engine-owned graph.",
         "parameters": {"type": "object", "properties": {
-            "project": {"type": "string"}, "intent": {"type": "string"},
-            "methodology": {"type": "string"}},
-            "required": ["project", "intent", "methodology"]}}},
+            "project": {"type": "string"}, "methodology": {"type": "string"},
+            "hints": {"type": "object"}},
+            "required": ["project", "methodology"]}}},
 ]
 
 

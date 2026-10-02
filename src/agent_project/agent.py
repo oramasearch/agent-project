@@ -224,7 +224,7 @@ def _methodology_call_defects(design: dict[str, Any],
     compile_steps = [step for step in trajectory if step.get("call") == "compile_intent"]
     if compile_steps:
         args = compile_steps[-1].get("args", {})
-        for field in ("project", "intent"):
+        for field in ("project", "methodology"):
             if not args.get(field):
                 problems.append(f"compile_intent names no {field}")
     for step in trajectory:
