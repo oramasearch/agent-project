@@ -4,7 +4,8 @@ The CLI builds one Pipeline from a task file and exits. In lake the agent is a s
 of the Agent Library: Design's *Create a Solution* and Ask Orama (as a subagent) send it turns.
 One turn is one `build`, against the customer's workspace reached through lake's Zetta-compatible
 path (`ZETTA_BASE_URL` points there, `ZETTA_TOKEN` is the lake key the turn carries), so the
-observations are real and lake's allow-lists and audit apply.
+observations are real and lake's allow-lists and audit apply. The model is reached through lake's
+model gateway with the same key (`model.py`, lake#248).
 
 Standard library only: the image carries exactly the agent's dependencies and nothing a web
 framework would add.
@@ -25,6 +26,7 @@ from openai import OpenAI
 from agent_project import apps, experiments, foundation, lake_bus, solutions
 from agent_project.agent import build, defects
 from agent_project.edit import propose, wants_edit
+from agent_project.model import gateway_client
 from agent_project.node import Node
 from agent_project.retrieval import Corpus
 
@@ -86,6 +88,17 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
             return {"ok": False, "error": "no workspace to build against: the turn needs "
                                           "zetta_base_url and zetta_token"}
         node = Node(base_url=base_url, token=token)
+    if client is None and not proposing_foundation:
+        # The model is reached through lake with the turn's own key, which counts its tokens in
+        # the turn's workspace (lake#248); this agent holds no provider key.
+        model_url = turn.get("lake_url") or os.environ.get("LAKE_URL", "")
+        model_key = turn.get("lake_token") or turn.get("zetta_token") or ""
+        if not model_url or not model_key:
+            if owned_node:
+                node.close()
+            return {"ok": False, "error": "a turn needs lake_url and its lake_token to reach the "
+                                          "model through lake"}
+        client = gateway_client(model_url, model_key)
     try:
         if proposing_foundation:
             try:
@@ -99,7 +112,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
             result["applied"] = False
         elif editing:
             # agent-project#4: a change is a proposal lake applies on the person's confirmation.
-            result = propose(turn, client or OpenAI(), turn.get("model") or settings.model, node)
+            result = propose(turn, client, turn.get("model") or settings.model, node)
             result["solution_registry"] = solution_registry.public()
             result["reads"].insert(0, {
                 "call": "list_solutions",
@@ -107,7 +120,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                 "observation": solution_registry.observation(),
             })
         else:
-            result = build(task, corpus, client or OpenAI(), turn.get("model") or settings.model,
+            result = build(task, corpus, client, turn.get("model") or settings.model,
                            node, settings.shots, solution_registry)
     finally:
         if owned_node:

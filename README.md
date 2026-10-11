@@ -77,8 +77,12 @@ service on `PORT` (8080):
 - **`AGENT_SERVICE_TOKEN`**, when set, is required as `Authorization: Bearer <token>`: only lake
   calls the service.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.
-- `PROJECT_MODEL` picks the model (default `gpt-4o`); `OPENAI_API_KEY` is the general Orama key
-  the operator mounts.
+- `PROJECT_MODEL` picks the model (default `gpt-4o`). **The model is reached through lake**
+  (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+  turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's
+  workspace and enforces the account's model-token limit. The service holds no `OPENAI_API_KEY`;
+  a turn without a lake credential is refused. Only the command line (`Run`, above), which runs for
+  no workspace, calls OpenAI directly with your own key.
 
 **The solutions catalogue** in the image is built at image-build time by zetta's own
 `scripts/build_catalog.py` from the solutions-designs plan, and passed as the named build context

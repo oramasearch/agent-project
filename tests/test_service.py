@@ -138,3 +138,44 @@ def test_a_turn_without_a_request_or_a_workspace_is_refused(tmp_path):
 def test_health_fails_without_the_corpus(tmp_path):
     status, body = service.health(settings(tmp_path), Corpus(tmp_path / "missing.jsonl"))
     assert status == 503 and not body["ok"]
+
+
+def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_path, monkeypatch):
+    """lake#248: the model is lake's `/openai/v1`, with the turn's own key, never a provider key."""
+    import httpx
+
+    from agent_project import model
+
+    monkeypatch.setattr("agent_project.agent.catalog.as_context", lambda: "")
+    seen: list[httpx.Request] = []
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        content = ('```json\n{"pipeline": {"dataset": "datasets.accounts", "label": "churned", '
+                   '"methodology": "M-1", "model_kind": "gbdt", "features": ["tenure"]}, '
+                   '"reply": "Designed."}\n```')
+        return httpx.Response(200, json={
+            "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "gpt-4o",
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}})
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(service, "gateway_client", lambda url, token: model.gateway_client(
+        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
+    answer = service.run_turn({"request": "predict churn", "lake_url": "http://lake:8080",
+                               "lake_token": "lat.task.secret", "zetta_token": "lat.task.secret"},
+                              settings(tmp_path), Corpus(tmp_path / "missing.jsonl"), None,
+                              FakeNode())
+    assert answer["result"]["pipeline"]["methodology"] == "M-1", answer
+    assert seen and all(str(request.url) == "http://lake:8080/openai/v1/chat/completions"
+                        for request in seen)
+    assert all(request.headers["authorization"] == "Bearer lat.task.secret" for request in seen)
+
+    # No lake credential for the model: refused rather than sent to a provider directly.
+    monkeypatch.delenv("LAKE_URL", raising=False)
+    calls = len(seen)
+    refused = service.run_turn({"request": "predict churn"}, settings(tmp_path),
+                               Corpus(tmp_path / "missing.jsonl"), None, FakeNode())
+    assert not refused["ok"] and "lake_token" in refused["error"]
+    assert len(seen) == calls
