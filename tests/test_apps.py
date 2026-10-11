@@ -129,6 +129,7 @@ def test_service_offers_app_for_a_scored_result_and_scrubs_both_turn_keys(
     turn = {
         "request": "Present the scored retention results.",
         "customer_id": "customer-1",
+        "lake_url": "http://lake",
         "lake_token": "lat.task.secret",
         "zetta_token": "lat.task.secret",
         "context": {

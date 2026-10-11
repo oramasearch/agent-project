@@ -210,6 +210,7 @@ def test_service_attaches_the_study_offer_and_scrubs_both_credentials(
     lake = FakeLake()
     turn = {
         **project_turn(),
+        "lake_url": "http://lake",
         "lake_token": "lat.task.secret",
         "zetta_token": "lat.task.secret",
     }
