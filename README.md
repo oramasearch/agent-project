@@ -4,6 +4,8 @@ Builds and operates catalogue Solutions, and builds or changes Pipelines, by **c
 It takes a profile and an intent — the shape `agent-autosuggest` emits — and walks a trajectory
 against a live node.
 
+**Current release: [v0.1.0](docs/releases/v0.1.0.md)** (all releases: [`docs/releases/`](docs/releases/README.md)).
+
 ## Not a trained model yet
 
 A frontier model, the solutions catalogue as context, and few-shot trajectories retrieved from
@@ -37,7 +39,7 @@ service on `PORT` (8080):
 
 | Route | What it does |
 |---|---|
-| `GET /healthz` | `200` with the corpus size, or `503` when the corpus is missing: answering zero-shot would be a different agent |
+| `GET /healthz` | `200` with the package `version` and the corpus size, or `503` when the corpus is missing: answering zero-shot would be a different agent |
 | `POST /v1/turn` | One solution operation, methodology build or edit proposal. Body: `{"request": "...", "context": {...}}` (or `{"task": {...}}` in the CLI's shape), plus `zetta_base_url` and `zetta_token` for the workspace. Answers `{ok, trace_id, result}`; `422` with `error` when the turn failed |
 
 - **Turns arrive on lake's agent bus** ([lake#269](https://github.com/oramasearch/lake/issues/269),
@@ -91,13 +93,14 @@ commits). `ZETTA_CATALOG` points at it; without it the agent builds the catalogu
 checkout, as before.
 
 **Image:** `Dockerfile`, published **private** as `oramasearch/agent-project` (created private
-before the first push; an anonymous read answers 404). The corpus is the named build context
-`corpus` (`agent-project-corpus/corpus`). Build it on the cluster BuildKit, never with Docker on a
-workstation:
+before the first push; an anonymous read answers 404). It needs two named build contexts: `catalog`
+(above) and `corpus` (`agent-project-corpus/corpus`). Build it on the cluster BuildKit, never with
+Docker on a workstation:
 
 ```sh
 buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&namespace=buildkit" build \
   --frontend dockerfile.v0 --local context=. --local dockerfile=. \
+  --local catalog=<dir with catalog.json and catalog.source.json> --opt context:catalog=local:catalog \
   --local corpus=../agent-project-corpus/corpus --opt context:corpus=local:corpus \
   --opt platform=linux/amd64 \
   --output type=image,name=docker.io/oramasearch/agent-project:<tag>,push=true
@@ -111,7 +114,8 @@ runnable and preview modules, sketch refusal, old-engine discovery, policy appro
 measured readout operation; `tests/test_foundations.py`: S-1 predicate evidence and S-5 forecast
 decision-source proposals; `tests/test_apps.py`: Lake App/build reads, result handoff, credential
 scrubbing, and confirmation-only writes; `tests/test_experiments.py`: registered Lake study reads,
-existing-study explanations, model-selection handoffs, and confirmation boundaries).
+existing-study explanations, model-selection handoffs, and confirmation boundaries;
+`tests/test_release.py`: the version in `pyproject.toml` has release notes in `docs/releases/`).
 
 ## Solutions come from the workspace
 
