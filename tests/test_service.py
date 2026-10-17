@@ -140,6 +140,16 @@ def test_health_fails_without_the_corpus(tmp_path):
     assert status == 503 and not body["ok"]
 
 
+def test_health_reports_the_package_version(tmp_path):
+    """The release a pod runs is readable from /healthz, taken from the installed package."""
+    from importlib.metadata import version
+
+    corpus_file = tmp_path / "corpus.jsonl"
+    corpus_file.write_text(json.dumps({"example_id": "e1", "intent": "churn"}) + "\n")
+    status, body = service.health(settings(tmp_path), Corpus(corpus_file))
+    assert status == 200 and body["version"] == version("agent-project")
+
+
 def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_path, monkeypatch):
     """lake#248: the model is lake's `/openai/v1`, with the turn's own key, never a provider key."""
     import httpx

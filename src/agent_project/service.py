@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+from importlib.metadata import version
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -164,9 +165,10 @@ def health(settings: Settings, corpus: Corpus) -> tuple[int, dict[str, Any]]:
     """Unhealthy without the corpus: answering zero-shot is a different agent, and a service
     that silently became one would be worse than one that says it cannot start."""
     if not corpus.examples:
-        return 503, {"ok": False, "error": f"no corpus at {settings.corpus_path}"}
-    return 200, {"ok": True, "agent": "agent-project", "examples": len(corpus.examples),
-                 "model": settings.model}
+        return 503, {"ok": False, "error": f"no corpus at {settings.corpus_path}",
+                     "version": version("agent-project")}
+    return 200, {"ok": True, "agent": "agent-project", "version": version("agent-project"),
+                 "examples": len(corpus.examples), "model": settings.model}
 
 
 def make_handler(settings: Settings, corpus: Corpus) -> type[BaseHTTPRequestHandler]:
