@@ -66,11 +66,13 @@ service on `PORT` (8080):
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
-  A turn first reads `list_solutions`; an older engine's `unknown_capability` response selects the
-  methodology-only compatibility path. Solution reads include `get_solution`, `get_policy`,
+  A turn first reads `list_solutions`. A request that names a solution operates it; any other
+  request, and every request on an older engine (whose `unknown_capability` response marks it),
+  takes the methodology path. Solution reads include `get_solution`, `get_policy`,
   `get_experiment`, `list_ledger`, `get_monitor`, and `get_roi_readout`; solution actions include
   `create_solution`, `run_solution`, `decide`, and approval of an explicitly authorized A1
-  decision. Methodology reads are `list_methodologies`, `list_datasets`,
+  decision, offered only from the command line: a Lake turn's key grants none of them, so a turn
+  proposes the solution instead (lake#796). Methodology reads are `list_methodologies`, `list_datasets`,
   `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
   `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
   methodology's engine-owned pipeline shape. Only the arguments Zetta's compile_intent accepts
@@ -119,9 +121,13 @@ existing-study explanations, model-selection handoffs, and confirmation boundari
 
 ## Solutions come from the workspace
 
-On a current engine, a build turn chooses only from the live `list_solutions` response and then
-reads the selected module with `get_solution`. It builds the composed graph with `create_solution`,
-runs exactly the graph that action returned, and reads policy, holdout, ledger, monitor and measured
+A turn that names a solution chooses only from the live `list_solutions` response and then
+reads the selected module with `get_solution`; any other request is a pipeline design
+(`docs/methodologies/README.md`). **A Lake turn proposes a solution and never builds it**: its key
+grants no solution action, so the action tools are withheld and the answer is a
+`solution_proposal` the person confirms with Lake's `confirm_solution` (lake#796,
+`docs/solutions/README.md`). From the command line, against your own workspace key, the agent
+builds the composed graph with `create_solution`, runs exactly the graph that action returned, and reads policy, holdout, ledger, monitor and measured
 readout state before explaining the result. Optional operations that answer `unknown_capability`
 are reported as not deployed yet.
 

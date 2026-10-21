@@ -113,10 +113,27 @@ def read(node: Node | None) -> Registry:
     return Registry(entries)
 
 
-def specs() -> list[dict[str, Any]]:
-    """Solution tools in the OpenAI SDK shape; policy mutation is intentionally absent."""
+# What a turn that may not build is told (lake#796). Lake's turn key for the Project Agent grants
+# no solution action: a solution is built only when the person confirms it (Lake's start_solution,
+# then confirm_solution), so the turn proposes it instead.
+PROPOSAL_RULE = (
+    "This turn's Lake key grants no solution action: do not call create_solution, run_solution, "
+    "decide or approve_decision. Read the selected entry with get_solution and finish with "
+    '{"proposal":{"solution":"S-n","level":1,"sources":{"source":"...","table":"..."}},'
+    '"reply":"..."}, naming a level from the entry and the real source and table the request '
+    "or the turn names. The person builds it by confirming it in Lake."
+)
+PROPOSED_REPLY = (
+    "Proposed, not built: Lake builds this solution when you confirm it (Start this solution, "
+    "then confirm)."
+)
+
+
+def specs(act: bool = True) -> list[dict[str, Any]]:
+    """Solution tools in the OpenAI SDK shape; policy mutation is intentionally absent, and a turn
+    that may not build (``act`` false) is offered the reads alone."""
     result = []
-    for name, description in {**READS, **ACTIONS}.items():
+    for name, description in ({**READS, **ACTIONS} if act else READS).items():
         result.append(
             {
                 "type": "function",
@@ -246,9 +263,12 @@ def _justified(because: str, trajectory: list[dict[str, Any]]) -> bool:
 
 
 def _preflight(name: str, args: dict[str, Any], task: dict[str, Any], registry: Registry,
-               trajectory: list[dict[str, Any]]) -> str | None:
+               trajectory: list[dict[str, Any]], act: bool = True) -> str | None:
     if name not in READS and name not in ACTIONS:
         return f"{name!r} is not a solution capability"
+    if name in ACTIONS and not act:
+        return (f"{name} is not granted on this turn: Lake builds a solution only when the person "
+                "confirms it; return a proposal")
     identifier = args.get("solution")
     if name in {"get_solution", "create_solution"}:
         entry = registry.entry(identifier)
@@ -354,13 +374,62 @@ def _readout(operations: dict[str, Any], explanation: str) -> dict[str, Any]:
     }
 
 
-def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[dict[str, Any]],
+def _proposal_result(task: dict[str, Any], registry: Registry, trajectory: list[dict[str, Any]],
                      answer: dict[str, Any]) -> dict[str, Any]:
+    """A solution the turn may not build, proposed for the person to confirm (lake#796)."""
+    proposal = answer.get("proposal")
+    if not isinstance(proposal, dict):
+        requested = answer.get("declined") or {}
+        identifier = requested.get("solution") or task.get("solution")
+        return _decline(registry, identifier, requested.get("reason"))
+    identifier = proposal.get("solution") or task.get("solution")
+    entry = _observed_entry(identifier, trajectory)
+    if entry is None:
+        return _decline(registry, identifier, f"get_solution did not read {identifier}")
+    if entry.get("status") == "sketch":
+        return _decline(registry, identifier)
+    level = proposal.get("level")
+    levels = _levels(entry)
+    if not isinstance(level, int) or isinstance(level, bool) or (levels and level not in levels):
+        return _decline(registry, identifier, f"level {level!r} is absent from its live levels")
+    missing = _missing(entry, None)
+    reply = str(answer.get("reply") or "").strip()
+    if missing:
+        issues = ", ".join(str(item.get("issue") or item.get("name")) for item in missing)
+        reply = (reply + " " if reply else "") + (
+            f"It would build as a preview; production operation needs {issues}."
+        )
+    reply = (reply + " " if reply else "") + PROPOSED_REPLY
+    return {
+        "kind": "solution_proposal",
+        "solution": {
+            "id": identifier,
+            "project": proposal.get("project") or task.get("project"),
+            "level": level,
+            "sources": proposal.get("sources") or task.get("sources"),
+            "production_ready": entry.get("runnable") is True and not missing,
+            "missing": missing,
+        },
+        "policy_proposal": _policy_proposal(entry),
+        "label_definitions": _label_definitions(entry),
+        "owner_signoff": {
+            "required": True,
+            "items": ["solution", "policy_proposal", "label_definitions"],
+        },
+        "operations": _operation_values(trajectory),
+        "reply": reply,
+    }
+
+
+def _solution_result(task: dict[str, Any], registry: Registry, trajectory: list[dict[str, Any]],
+                     answer: dict[str, Any], act: bool = True) -> dict[str, Any]:
     created_step = next(
         (step for step in reversed(trajectory)
          if step.get("call") == "create_solution" and isinstance(step.get("value"), dict)),
         None,
     )
+    if created_step is None and not act and not isinstance(answer.get("policy_change"), dict):
+        return _proposal_result(task, registry, trajectory, answer)
     if created_step is None:
         policy_change = answer.get("policy_change")
         if isinstance(policy_change, dict):
@@ -445,20 +514,26 @@ def unavailable(registry: Registry, identifier: str | None = None) -> dict[str, 
 
 
 def operate(task: dict[str, Any], client: OpenAI, model: str, node: Node | None,
-            registry: Registry) -> dict[str, Any]:
-    """Build, run and read one solution while retaining every workspace observation."""
+            registry: Registry, act: bool = True) -> dict[str, Any]:
+    """Build, run and read one solution while retaining every workspace observation.
+
+    With ``act`` false (every Lake turn: its key grants no solution action, lake#796) the turn
+    reads and proposes the solution instead, and no action is offered or run."""
+    situation: dict[str, Any] = {
+        "mode": "solution" if act else "solution_proposal",
+        "request": task.get("intent"),
+        "project": task.get("project"),
+        "requested_solution": task.get("solution"),
+        "requested_level": task.get("level"),
+        "requested_sources": task.get("sources"),
+        "solution_registry": registry.public(),
+        "registry_observation": registry.observation(),
+    }
+    if not act:
+        situation["runtime_rule"] = PROPOSAL_RULE
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": PROMPT.read_text()},
-        {"role": "user", "content": json.dumps({
-            "mode": "solution",
-            "request": task.get("intent"),
-            "project": task.get("project"),
-            "requested_solution": task.get("solution"),
-            "requested_level": task.get("level"),
-            "requested_sources": task.get("sources"),
-            "solution_registry": registry.public(),
-            "registry_observation": registry.observation(),
-        })},
+        {"role": "user", "content": json.dumps(situation)},
     ]
     trajectory: list[dict[str, Any]] = [{
         "call": "list_solutions",
@@ -470,7 +545,7 @@ def operate(task: dict[str, Any], client: OpenAI, model: str, node: Node | None,
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=specs(),
+            tools=specs(act),
         ).choices[0].message
         messages.append(response.model_dump(exclude_none=True))
         if not response.tool_calls:
@@ -494,7 +569,7 @@ def operate(task: dict[str, Any], client: OpenAI, model: str, node: Node | None,
             elif not _justified(because, trajectory):
                 observation = "REJECTED: because does not refer to a previous observation"
             else:
-                problem = _preflight(call.function.name, args, task, registry, trajectory)
+                problem = _preflight(call.function.name, args, task, registry, trajectory, act)
                 if problem:
                     observation = f"REJECTED: {problem}"
                 else:
@@ -507,7 +582,7 @@ def operate(task: dict[str, Any], client: OpenAI, model: str, node: Node | None,
                 "tool_call_id": call.id,
                 "content": observation,
             })
-    result = _solution_result(task, registry, trajectory, answer or {})
+    result = _solution_result(task, registry, trajectory, answer or {}, act)
     result["solution_registry"] = registry.public()
     result["trajectory"] = trajectory
     result["prompt_version"] = PROMPT_VERSION
@@ -535,6 +610,22 @@ def defects(result: dict[str, Any]) -> list[str]:
             condition = str(entry.get("promotion_condition") or "")
             if condition and condition not in str(result.get("reply") or ""):
                 problems.append("the sketch refusal does not name its promotion condition")
+        return problems
+    if result.get("kind") == "solution_proposal":
+        calls = {step.get("call") for step in trajectory}
+        if "get_solution" not in calls:
+            problems.append("the solution proposal did not call get_solution")
+        for name in sorted(calls & set(ACTIONS)):
+            problems.append(f"the solution proposal called {name}, which only a confirmation runs")
+        solution = result.get("solution") or {}
+        registry = Registry((result.get("solution_registry") or {}).get("solutions") or [])
+        if registry.entry(solution.get("id")) is None:
+            problems.append("the proposed solution is absent from this turn's registry")
+        sources = solution.get("sources")
+        if not isinstance(sources, dict) or not sources.get("source") or not sources.get("table"):
+            problems.append("the solution proposal names no source and table")
+        if (result.get("policy_proposal") or {}).get("approval_required") is not True:
+            problems.append("the policy proposal does not require owner approval")
         return problems
     if result.get("kind") == "policy_proposal":
         calls = {step.get("call") for step in trajectory}
