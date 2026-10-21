@@ -76,8 +76,9 @@ service on `PORT` (8080):
   methodology's engine-owned pipeline shape. Only the arguments Zetta's compile_intent accepts
   (`project`, `methodology`, `solution`, `hints`, `name`, `input_id`) are sent; the model's own
   goal text is not, because the compiler reads the project's captured intent (#20).
-- **`AGENT_SERVICE_TOKEN`**, when set, is required as `Authorization: Bearer <token>`: only lake
-  calls the service.
+- **`AGENT_SERVICE_TOKEN`** is required as `Authorization: Bearer <token>`, compared in constant
+  time (`401` otherwise): only lake calls the service. With it unset or empty the route fails
+  closed and refuses every turn with `503`.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.
 - `PROJECT_MODEL` picks the model (default `gpt-4o`). **The model is reached through lake**
   (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
