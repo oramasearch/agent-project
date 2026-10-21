@@ -207,6 +207,7 @@ def test_service_attaches_the_study_offer_and_scrubs_both_credentials(
     built = project_result()
     monkeypatch.setattr(service, "build", lambda *_args, **_kwargs: built)
     monkeypatch.setattr(service, "defects", lambda *_args, **_kwargs: [])
+    monkeypatch.setenv("LAKE_URL", "http://lake")
     lake = FakeLake()
     turn = {
         **project_turn(),

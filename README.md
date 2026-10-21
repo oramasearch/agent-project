@@ -80,11 +80,19 @@ service on `PORT` (8080):
   calls the service.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.
 - `PROJECT_MODEL` picks the model (default `gpt-4o`). **The model is reached through lake**
-  (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+  (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<LAKE_URL>/openai/v1` with the
   turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's
   workspace and enforces the account's model-token limit. The service holds no `OPENAI_API_KEY`;
   a turn without a lake credential is refused. Only the command line (`Run`, above), which runs for
   no workspace, calls OpenAI directly with your own key.
+- **A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#30). The model
+  address is always `LAKE_URL`; a turn's `lake_url` is never used for it. The workspace address
+  (`zetta_base_url`, Lake's `<LAKE_URL>/w/<workspace>/workspaces/<customer>/zetta`) and the Lake
+  address for App and Experiments reads (`lake_url`) are accepted only on `LAKE_URL`'s origin
+  (scheme, host and port) under its path, with no user info, query or fragment; any other address
+  refuses the turn before a request is made. With `LAKE_URL` unset, every turn that would send its
+  credential is refused. A turn that names no `zetta_base_url` uses the operator's own
+  `ZETTA_BASE_URL`.
 
 **The solutions catalogue** in the image is built at image-build time by zetta's own
 `scripts/build_catalog.py` from the solutions-designs plan, and passed as the named build context
