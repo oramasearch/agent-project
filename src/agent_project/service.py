@@ -13,6 +13,7 @@ framework would add.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from importlib.metadata import version
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 
@@ -42,6 +44,57 @@ class Settings:
         self.trace_dir = Path(os.environ.get("TRACE_DIR", "/tmp/agent-project-traces"))
         self.default_base_url = os.environ.get("ZETTA_BASE_URL", "")
         self.shots = int(os.environ.get("PROJECT_SHOTS", "2"))
+
+
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin(url: str) -> tuple[str, str, int] | None:
+    """`(scheme, host, port)` of an absolute http(s) URL with no user info, or None."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    scheme = parts.scheme.lower()
+    if scheme not in DEFAULT_PORTS or not parts.hostname or "@" in parts.netloc:
+        return None
+    return scheme, parts.hostname.lower(), port or DEFAULT_PORTS[scheme]
+
+
+def lakes_url() -> str:
+    """Lake's address from this service's environment (`LAKE_URL`), the only place a turn's
+    credential is ever sent; empty when unset."""
+    return os.environ.get("LAKE_URL", "").strip().rstrip("/")
+
+
+def on_lake(requested: str, lake: str) -> str | None:
+    """`requested` when it is an address on Lake at `LAKE_URL`, else None.
+
+    Lake hands the agent its read path to the person's workspace
+    (`<LAKE_URL>/w/<workspace>/workspaces/<customer>/zetta`) and its own address, and the turn's
+    credential is sent there. Both come from the request, so they are accepted only on Lake's own
+    origin (scheme, host and port of `LAKE_URL`) under `LAKE_URL`'s path, with no user info, query
+    or fragment; anything else would send the bearer to a host the caller chose (#30).
+    """
+    want = _origin(lake)
+    got = _origin(requested)
+    if want is None or got is None or got != want:
+        return None
+    parts, base = urlsplit(requested), urlsplit(lake)
+    if parts.query or parts.fragment or "\\" in requested:
+        return None
+    prefix = base.path.rstrip("/")
+    path = parts.path
+    if prefix and not (path == prefix or path.startswith(prefix + "/")):
+        return None
+    if any(segment in (".", "..") for segment in path.split("/")):
+        return None
+    return requested.rstrip("/")
+
+
+NO_LAKE_URL = ("LAKE_URL is not set: this agent sends a turn's credential only to Lake's "
+               "configured address")
 
 
 def task_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
@@ -81,25 +134,49 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
         return {"ok": False, "error": "a change request needs a request"}
     if not editing and not task.get("intent"):
         return {"ok": False, "error": "a turn needs a request (or a task with an intent)"}
+    # A turn's credential goes only to Lake at this service's own LAKE_URL, never to an address
+    # the request names (#30). Every address is settled here, before any request goes out.
+    lake_address = lakes_url()
     owned_node = node is None
     if node is None:
-        base_url = turn.get("zetta_base_url") or settings.default_base_url
+        requested = turn.get("zetta_base_url")
         token = turn.get("zetta_token") or os.environ.get("ZETTA_TOKEN", "")
-        if not base_url or not token:
+        if not (requested or settings.default_base_url) or not token:
             return {"ok": False, "error": "no workspace to build against: the turn needs "
                                           "zetta_base_url and zetta_token"}
-        node = Node(base_url=base_url, token=token)
-    if client is None and not proposing_foundation:
+        if requested:
+            if not lake_address or _origin(lake_address) is None:
+                return {"ok": False, "error": NO_LAKE_URL}
+            base_url = on_lake(str(requested), lake_address)
+            if base_url is None:
+                return {"ok": False, "error": "zetta_base_url is not Lake's workspace route at "
+                                              "LAKE_URL; the turn's credential is never sent "
+                                              "elsewhere"}
+        else:
+            # The operator's own ZETTA_BASE_URL, not an address from the request.
+            base_url = settings.default_base_url
+    needs_model = client is None and not proposing_foundation
+    needs_lake = lake is None and (apps.handoff_inputs(turn) is not None
+                                   or turn.get("lake_url") is not None)
+    lake_base = lake_address
+    if (needs_model or needs_lake) and (not lake_address or _origin(lake_address) is None):
+        return {"ok": False, "error": NO_LAKE_URL}
+    if needs_lake and turn.get("lake_url"):
+        lake_base = on_lake(str(turn["lake_url"]), lake_address) or ""
+        if not lake_base:
+            return {"ok": False, "error": "lake_url is not on Lake at LAKE_URL; the turn's "
+                                          "credential is never sent elsewhere"}
+    if needs_model:
         # The model is reached through lake with the turn's own key, which counts its tokens in
-        # the turn's workspace (lake#248); this agent holds no provider key.
-        model_url = turn.get("lake_url") or os.environ.get("LAKE_URL", "")
+        # the turn's workspace (lake#248); this agent holds no provider key. The address is this
+        # service's LAKE_URL; the turn's own `lake_url` is never used for it (#30).
         model_key = turn.get("lake_token") or turn.get("zetta_token") or ""
-        if not model_url or not model_key:
-            if owned_node:
-                node.close()
-            return {"ok": False, "error": "a turn needs lake_url and its lake_token to reach the "
-                                          "model through lake"}
-        client = gateway_client(model_url, model_key)
+        if not model_key:
+            return {"ok": False, "error": "a turn needs its lake_token to reach the model "
+                                          "through lake"}
+        client = gateway_client(lake_address, model_key)
+    if node is None:
+        node = Node(base_url=base_url, token=token)
     try:
         if proposing_foundation:
             try:
@@ -121,8 +198,10 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                 "observation": solution_registry.observation(),
             })
         else:
+            # A Lake turn's key grants no solution action (lake#796): a named solution is
+            # proposed for the person to confirm, never built by the turn.
             result = build(task, corpus, client, turn.get("model") or settings.model,
-                           node, settings.shots, solution_registry)
+                           node, settings.shots, solution_registry, act=False)
     finally:
         if owned_node:
             node.close()
@@ -134,15 +213,15 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     if app_handoff is not None or experiment_handoff is not None:
         owned_lake = lake is None
         if lake is None:
-            lake_url = turn.get("lake_url")
             lake_token = turn.get("lake_token")
-            if not lake_url or not lake_token:
+            if not lake_base or not lake_token:
                 kind = "an App" if app_handoff is not None else "an Experiments"
                 return {
                     "ok": False,
-                    "error": f"{kind} handoff needs lake_url and lake_token",
+                    "error": f"{kind} handoff needs LAKE_URL and lake_token",
                 }
-            lake = apps.Lake(str(lake_url), str(lake_token))
+            # LAKE_URL, or the turn's lake_url only when it is on Lake at LAKE_URL (#30).
+            lake = apps.Lake(lake_base, str(lake_token))
         try:
             if experiment_handoff is not None:
                 result = experiments.attach(turn, result, lake)
@@ -171,6 +250,22 @@ def health(settings: Settings, corpus: Corpus) -> tuple[int, dict[str, Any]]:
                  "examples": len(corpus.examples), "model": settings.model}
 
 
+def turn_refusal(authorization: str | None, token: str) -> tuple[int, str] | None:
+    """Why `POST /v1/turn` is refused, as `(status, error)`, or None when the caller may proceed.
+
+    The route fails closed: with `AGENT_SERVICE_TOKEN` unset or empty every turn is refused, so a
+    service started without it is never open. The bearer is compared in constant time
+    (`hmac.compare_digest` over bytes), so the comparison's timing says nothing about the token.
+    """
+    if not token:
+        return 503, "AGENT_SERVICE_TOKEN is not set; this service refuses every turn"
+    expected = f"Bearer {token}".encode()
+    supplied = (authorization or "").encode("utf-8", "surrogateescape")
+    if not hmac.compare_digest(supplied, expected):
+        return 401, "unauthorized"
+    return None
+
+
 def make_handler(settings: Settings, corpus: Corpus) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: dict[str, Any]) -> None:
@@ -191,8 +286,10 @@ def make_handler(settings: Settings, corpus: Corpus) -> type[BaseHTTPRequestHand
             if self.path != "/v1/turn":
                 self._send(404, {"ok": False, "error": "not found"})
                 return
-            if settings.token and self.headers.get("Authorization") != f"Bearer {settings.token}":
-                self._send(401, {"ok": False, "error": "unauthorized"})
+            refusal = turn_refusal(self.headers.get("Authorization"), settings.token)
+            if refusal is not None:
+                status, error = refusal
+                self._send(status, {"ok": False, "error": error})
                 return
             try:
                 turn = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))

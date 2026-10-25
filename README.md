@@ -4,7 +4,7 @@ Builds and operates catalogue Solutions, and builds or changes Pipelines, by **c
 It takes a profile and an intent — the shape `agent-autosuggest` emits — and walks a trajectory
 against a live node.
 
-**Current release: [v0.1.0](docs/releases/v0.1.0.md)** (all releases: [`docs/releases/`](docs/releases/README.md)).
+**Current release: [v0.2.0](docs/releases/v0.2.0.md)** (all releases: [`docs/releases/`](docs/releases/README.md)).
 
 ## Not a trained model yet
 
@@ -66,25 +66,36 @@ service on `PORT` (8080):
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
   goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
-  A turn first reads `list_solutions`; an older engine's `unknown_capability` response selects the
-  methodology-only compatibility path. Solution reads include `get_solution`, `get_policy`,
+  A turn first reads `list_solutions`. A request that names a solution operates it; any other
+  request, and every request on an older engine (whose `unknown_capability` response marks it),
+  takes the methodology path. Solution reads include `get_solution`, `get_policy`,
   `get_experiment`, `list_ledger`, `get_monitor`, and `get_roi_readout`; solution actions include
   `create_solution`, `run_solution`, `decide`, and approval of an explicitly authorized A1
-  decision. Methodology reads are `list_methodologies`, `list_datasets`,
+  decision, offered only from the command line: a Lake turn's key grants none of them, so a turn
+  proposes the solution instead (lake#796). Methodology reads are `list_methodologies`, `list_datasets`,
   `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
   `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
   methodology's engine-owned pipeline shape. Only the arguments Zetta's compile_intent accepts
   (`project`, `methodology`, `solution`, `hints`, `name`, `input_id`) are sent; the model's own
   goal text is not, because the compiler reads the project's captured intent (#20).
-- **`AGENT_SERVICE_TOKEN`**, when set, is required as `Authorization: Bearer <token>`: only lake
-  calls the service.
+- **`AGENT_SERVICE_TOKEN`** is required as `Authorization: Bearer <token>`, compared in constant
+  time (`401` otherwise): only lake calls the service. With it unset or empty the route fails
+  closed and refuses every turn with `503`.
 - **Every turn is a trace** in `TRACE_DIR`, without the caller's key.
 - `PROJECT_MODEL` picks the model (default `gpt-4o`). **The model is reached through lake**
-  (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+  (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<LAKE_URL>/openai/v1` with the
   turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's
   workspace and enforces the account's model-token limit. The service holds no `OPENAI_API_KEY`;
   a turn without a lake credential is refused. Only the command line (`Run`, above), which runs for
   no workspace, calls OpenAI directly with your own key.
+- **A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#30). The model
+  address is always `LAKE_URL`; a turn's `lake_url` is never used for it. The workspace address
+  (`zetta_base_url`, Lake's `<LAKE_URL>/w/<workspace>/workspaces/<customer>/zetta`) and the Lake
+  address for App and Experiments reads (`lake_url`) are accepted only on `LAKE_URL`'s origin
+  (scheme, host and port) under its path, with no user info, query or fragment; any other address
+  refuses the turn before a request is made. With `LAKE_URL` unset, every turn that would send its
+  credential is refused. A turn that names no `zetta_base_url` uses the operator's own
+  `ZETTA_BASE_URL`.
 
 **The solutions catalogue** in the image is built at image-build time by zetta's own
 `scripts/build_catalog.py` from the solutions-designs plan, and passed as the named build context
@@ -119,9 +130,13 @@ existing-study explanations, model-selection handoffs, and confirmation boundari
 
 ## Solutions come from the workspace
 
-On a current engine, a build turn chooses only from the live `list_solutions` response and then
-reads the selected module with `get_solution`. It builds the composed graph with `create_solution`,
-runs exactly the graph that action returned, and reads policy, holdout, ledger, monitor and measured
+A turn that names a solution chooses only from the live `list_solutions` response and then
+reads the selected module with `get_solution`; any other request is a pipeline design
+(`docs/methodologies/README.md`). **A Lake turn proposes a solution and never builds it**: its key
+grants no solution action, so the action tools are withheld and the answer is a
+`solution_proposal` the person confirms with Lake's `confirm_solution` (lake#796,
+`docs/solutions/README.md`). From the command line, against your own workspace key, the agent
+builds the composed graph with `create_solution`, runs exactly the graph that action returned, and reads policy, holdout, ledger, monitor and measured
 readout state before explaining the result. Optional operations that answer `unknown_capability`
 are reported as not deployed yet.
 

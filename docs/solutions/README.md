@@ -50,6 +50,32 @@ numeric and categorical columns. M-2 uses the selected entity as `record_id` and
 as `name`. When no name-like column was observed, the proposal leaves `name` unset and explains the
 missing `M-2.name` mapping for review.
 
+## Which turns operate a solution
+
+Only a request that **names a solution** (`solution` on the task or the turn's `context`) is a
+solution turn. Any other request, such as "Build a pipeline that predicts churn", is a pipeline
+design on the methodology path (`docs/methodologies/README.md`), whose answer is the
+`result.pipeline` Lake applies to a project (lake#796).
+
+**A Lake turn never builds.** Lake's turn key for the Project Agent grants no solution action
+(lake `docs/api/agent-launches.md`): `create_solution` composes a pipeline, policy, protected
+experiment, monitor and ROI definition, and `run_solution` delivers governed actions, so Lake runs
+them only when the person confirms (`start_solution`, then `confirm_solution`). Every turn the
+service takes (`service.run_turn`) therefore runs solution mode with `act` false: the action tools
+are not offered, a call to one is rejected before it reaches the workspace, and the turn reads the
+entry with `get_solution` and answers `kind: solution_proposal`:
+
+- `solution`: the id, project, an integer level from the live entry, and the `sources` to build
+  from, with `production_ready` and `missing` from the entry;
+- the policy proposal and label definitions below, all for owner sign-off;
+- a reply ending *Proposed, not built*, and `applied: false`.
+
+A proposal for an entry `get_solution` did not read, a sketch, or a level absent from the entry is
+declined. The build-and-operate flow below runs only from the command line (`agent-project`, `act`
+true), against a workspace and a key of your own.
+
+To verify: `uv run pytest tests/test_solutions.py -k lake_turn`.
+
 ## Build and operate flow
 
 For a selected module, the turn follows this order:
