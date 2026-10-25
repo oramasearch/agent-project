@@ -13,12 +13,16 @@ For a runnable method, the turn follows this order:
 2. `list_datasets` / `get_dataset` identify the real source.
 3. `analyze_dataset` reports semantic types, grain, keys, joins and leakage suspects.
 4. `plan_features {dataset, methodology}` returns concrete features or a transform-first result.
-5. `compile_intent {project, methodology}` (Zetta compiles the project's captured intent and accepts no `intent` argument) returns the methodology-owned graph.
+5. `compile_intent {project, methodology}` (Zetta compiles the project's captured intent and accepts no `intent` argument) returns the methodology-owned graph. Only a turn that names a project calls it: it stores a graph in that project, and Lake grants it (confined to its check graph) only on a change request or a `build:<project>` turn. A design turn with no project designs from the analysis and the feature plan.
 6. The reviewed design names `dataset`, `methodology`, `model_kind`, and features or the required
    transform. A label is required only when the registry marks a label, target or outcome input as
    required.
 
-The validator checks that analysis, planning and compilation occurred, that planning and
+A request that names no solution is a pipeline design on every engine (lake#796); only a request
+that names a solution goes to solution operation (`docs/solutions/README.md`).
+
+The validator checks that analysis, planning and (when the turn names a project) compilation
+occurred, that planning and
 compilation used the design's methodology, and that the model kind belongs to the live registry
 entry. If the model emits a pipeline for an absent or non-runnable method, the runtime replaces it
 with a decline derived from the registry.

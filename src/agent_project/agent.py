@@ -26,7 +26,7 @@ from agent_project import catalog, methodologies, solutions, tools
 from agent_project.node import Node, describe
 from agent_project.retrieval import Corpus
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_CALLS = 12
 
@@ -88,12 +88,18 @@ def _finished(text: str | None) -> dict[str, Any] | None:
 
 
 def build(task: dict[str, Any], corpus: Corpus, client: OpenAI, model: str, node: Node | None,
-          k: int = 2, solution_registry: solutions.Registry | None = None) -> dict[str, Any]:
-    """Walk a trajectory and return what was built, alongside the trajectory that built it."""
+          k: int = 2, solution_registry: solutions.Registry | None = None,
+          act: bool = True) -> dict[str, Any]:
+    """Walk a trajectory and return what was built, alongside the trajectory that built it.
+
+    A request that names a solution operates that solution; any other request is a pipeline
+    design (lake#796: a Lake build turn asks for a design it applies, and its key grants no
+    solution action). With ``act`` false, as on every Lake turn, a named solution is proposed for
+    the person to confirm rather than built."""
     solution_registry = solution_registry or solutions.read(node)
-    wants_solution = bool(task.get("solution")) or not task.get("methodology")
+    wants_solution = bool(task.get("solution"))
     if wants_solution and solution_registry.entries:
-        return solutions.operate(task, client, model, node, solution_registry)
+        return solutions.operate(task, client, model, node, solution_registry, act)
     if wants_solution and not solution_registry.old_engine:
         return solutions.unavailable(solution_registry, task.get("solution"))
     registry = methodologies.read(node)
@@ -202,13 +208,16 @@ def normalize(pipeline: Any) -> Any:
     return pipeline
 
 
-def _methodology_call_defects(design: dict[str, Any],
-                              trajectory: list[dict[str, Any]]) -> list[str]:
-    """Check that the live data and compiler calls support the returned design."""
+def _methodology_call_defects(design: dict[str, Any], trajectory: list[dict[str, Any]],
+                              project: Any = None) -> list[str]:
+    """Check that the live data and compiler calls support the returned design. compile_intent
+    stores a graph in a project, so it is required only of a turn that names one: Lake grants it
+    (confined to its check graph) only there (lake#438, lake#796)."""
     problems: list[str] = []
     identifier = design.get("methodology")
     dataset = design.get("dataset")
-    for required in ("analyze_dataset", "plan_features", "compile_intent"):
+    required_calls = ("analyze_dataset", "plan_features") + (("compile_intent",) if project else ())
+    for required in required_calls:
         if not any(step.get("call") == required for step in trajectory):
             problems.append(f"the design did not call {required}")
 
@@ -237,7 +246,7 @@ def _methodology_call_defects(design: dict[str, Any],
 
 def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
     """Everything wrong with what was built. Empty means it is usable."""
-    if result.get("kind") in {"solution", "policy_proposal", "declined"} \
+    if result.get("kind") in {"solution", "solution_proposal", "policy_proposal", "declined"} \
             and "solution_registry" in result:
         return solutions.defects(result)
     problems = tools.undisciplined(result["trajectory"], task.get("before"))
@@ -290,7 +299,7 @@ def defects(task: dict[str, Any], result: dict[str, Any]) -> list[str]:
         if needs_label and not design.get("label"):
             problems.append(f"the {identifier} design names no label")
 
-    problems += _methodology_call_defects(design, result["trajectory"])
+    problems += _methodology_call_defects(design, result["trajectory"], task.get("project"))
 
     # A mutation must change the thing asked for and leave the rest alone.
     before = task.get("before")

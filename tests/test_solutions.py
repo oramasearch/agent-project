@@ -6,7 +6,7 @@ import httpx
 import json
 from types import SimpleNamespace
 
-from agent_project import service, solutions
+from agent_project import agent, service, solutions
 from agent_project.node import ACT_CAPABILITY, READ_CAPABILITY
 from agent_project.retrieval import Corpus
 
@@ -304,21 +304,133 @@ def test_a_policy_change_is_proposed_for_approval_and_never_applied():
     assert not solutions.defects(result)
 
 
-def test_the_service_routes_a_current_engine_turn_to_solution_operation(tmp_path):
-    node = SolutionNode(solution_entry())
+class LakeTurnNode(SolutionNode):
+    """A current engine reached with a Lake turn key: reads only, and no solution action, as Lake
+    grants the Project Agent (lake docs/api/agent-launches.md; lake#796)."""
+
+    def read(self, capability, **params):
+        if capability == "list_methodologies":
+            self.calls.append(("read", capability, params))
+            return {"methodologies": [{
+                "id": "M-1", "name": "Churn", "family": "classification",
+                "model_kinds": ["gbdt"], "inputs": [], "outputs": [], "metrics": [],
+                "runnable": True, "partial": False,
+            }]}
+        if capability in {"analyze_dataset", "plan_features"}:
+            self.calls.append(("read", capability, params))
+            return {"grain": "snapshot", "features": ["tenure_months", "failed_payments"]}
+        return super().read(capability, **params)
+
+    def act(self, capability, **params):
+        self.calls.append(("act", capability, params))
+        raise AssertionError(f"a Lake design turn called {capability}")
+
+
+def test_a_lake_turn_that_names_no_solution_designs_a_pipeline_without_a_write(
+        tmp_path, monkeypatch):
+    # lake#796: "Build a pipeline that predicts churn" was sent to solution operation, whose
+    # create_solution the turn key does not grant (403), so the turn ended declined.
+    monkeypatch.setattr(agent.catalog, "as_context", lambda: "")
+    node = LakeTurnNode(solution_entry())
     settings = service.Settings()
     settings.trace_dir = tmp_path / "traces"
+    client = Scripted(
+        completion(tool_calls=[call("analyze_dataset", {"dataset": "datasets.churn"},
+                                    "list_methodologies returned M-1")]),
+        completion(tool_calls=[call("plan_features",
+                                    {"dataset": "datasets.churn", "methodology": "M-1"},
+                                    "analyze_dataset returned snapshot grain")]),
+        completion(content=json.dumps({
+            "pipeline": {"dataset": "datasets.churn", "methodology": "M-1",
+                         "model_kind": "gbdt", "label": "churned",
+                         "features": ["tenure_months", "failed_payments"]},
+            "reply": "A gradient-boosted churn model over datasets.churn, for you to review.",
+        })),
+    )
 
     answer = service.run_turn(
-        {"request": "build retention actions", "context": {"project": "retention"}},
+        {"request": "Build a pipeline that predicts churn from my churn dataset"},
         settings,
         Corpus(tmp_path / "missing.jsonl"),
-        client=operation_script(),
+        client=client,
         node=node,
     )
 
     assert answer["ok"] is True
-    assert answer["result"]["kind"] == "solution"
-    assert answer["result"]["defects"] == []
-    assert node.calls[0][1] == "list_solutions"
-    assert [item for item in node.calls if item[1] == "list_solutions"] == [node.calls[0]]
+    result = answer["result"]
+    assert result["applied"] is False
+    assert result["pipeline"]["methodology"] == "M-1"
+    assert result["defects"] == []
+    assert [item for item in node.calls if item[0] == "act"] == []
+    assert [item[1] for item in node.calls[:2]] == ["list_solutions", "list_methodologies"]
+
+
+def test_a_lake_turn_that_names_a_solution_proposes_it_and_never_builds(tmp_path):
+    node = LakeTurnNode(solution_entry())
+    settings = service.Settings()
+    settings.trace_dir = tmp_path / "traces"
+    sources = {"source": "datasets", "table": "customers"}
+    client = Scripted(
+        completion(tool_calls=[call("get_solution", {"solution": "S-live"},
+                                    "list_solutions returned S-live")]),
+        completion(tool_calls=[call("create_solution", {
+            "project": "retention", "solution": "S-live", "level": 1, "sources": sources,
+        }, "get_solution returned level 1")]),
+        completion(content=json.dumps({
+            "proposal": {"solution": "S-live", "level": 1, "sources": sources},
+            "reply": "Retention actions at level 1 over datasets.customers.",
+        })),
+    )
+
+    answer = service.run_turn(
+        {"request": "set up retention actions",
+         "context": {"project": "retention", "solution": "S-live"}},
+        settings,
+        Corpus(tmp_path / "missing.jsonl"),
+        client=client,
+        node=node,
+    )
+
+    assert answer["ok"] is True
+    result = answer["result"]
+    assert result["kind"] == "solution_proposal"
+    assert result["applied"] is False
+    assert result["solution"] == {
+        "id": "S-live", "project": "retention", "level": 1, "sources": sources,
+        "production_ready": True, "missing": [],
+    }
+    assert result["policy_proposal"]["approval_required"] is True
+    assert result["reply"].endswith(solutions.PROPOSED_REPLY)
+    # The create_solution attempt was refused before it reached the workspace, and offered no
+    # action tool to begin with.
+    assert [item for item in node.calls if item[0] == "act"] == []
+    attempt = result["trajectory"][2]
+    assert attempt["call"] == "create_solution"
+    assert attempt["observation"].startswith("REJECTED: create_solution is not granted")
+    assert "the solution proposal called create_solution, which only a confirmation runs" in (
+        result["defects"])
+    names = {item["function"]["name"] for item in solutions.specs(act=False)}
+    assert names == set(solutions.READS)
+
+
+def test_a_clean_solution_proposal_has_no_defects(tmp_path):
+    node = LakeTurnNode(solution_entry())
+    registry = solutions.read(node)
+    sources = {"source": "datasets", "table": "customers"}
+    client = Scripted(
+        completion(tool_calls=[call("get_solution", {"solution": "S-live"},
+                                    "list_solutions returned S-live")]),
+        completion(content=json.dumps({
+            "proposal": {"solution": "S-live", "level": 1, "sources": sources},
+            "reply": "Retention actions at level 1.",
+        })),
+    )
+
+    result = solutions.operate(
+        {"project": "retention", "solution": "S-live", "intent": "set it up"},
+        client, "model", node, registry, act=False,
+    )
+
+    assert result["kind"] == "solution_proposal"
+    assert not solutions.defects(result)
+    assert all(item[0] == "read" for item in node.calls)

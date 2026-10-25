@@ -198,8 +198,10 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                 "observation": solution_registry.observation(),
             })
         else:
+            # A Lake turn's key grants no solution action (lake#796): a named solution is
+            # proposed for the person to confirm, never built by the turn.
             result = build(task, corpus, client, turn.get("model") or settings.model,
-                           node, settings.shots, solution_registry)
+                           node, settings.shots, solution_registry, act=False)
     finally:
         if owned_node:
             node.close()
