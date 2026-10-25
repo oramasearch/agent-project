@@ -19,7 +19,9 @@ a pipeline design with no materialized result do not trigger an App offer.
 ## Lake evidence
 
 Apps and builds are Lake resources, not workspace Zetta resources. The Project Agent uses the
-turn's short-lived `lake_url` and `lake_token` for these reads:
+turn's short-lived `lake_token` for these reads, sent to Lake at the service's own `LAKE_URL`; a
+turn's `lake_url` is used only when it is on `LAKE_URL`'s origin under its path, and any other
+address refuses the turn before a request is made (#30):
 
 - `list_apps` and `get_app` read desired and observed App state;
 - `receive_app_events` reads retained rollout events from a one-based cursor;

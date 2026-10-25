@@ -125,6 +125,7 @@ def test_service_offers_app_for_a_scored_result_and_scrubs_both_turn_keys(
     built = {"pipeline": {"methodology": "M-1"}, "reply": "The scored list is ready."}
     monkeypatch.setattr(service, "build", lambda *_args, **_kwargs: built)
     monkeypatch.setattr(service, "defects", lambda *_args, **_kwargs: [])
+    monkeypatch.setenv("LAKE_URL", "http://lake")
     lake = FakeLake()
     turn = {
         "request": "Present the scored retention results.",

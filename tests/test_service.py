@@ -173,7 +173,9 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(service, "gateway_client", lambda url, token: model.gateway_client(
         url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
-    answer = service.run_turn({"request": "predict churn", "lake_url": "http://lake:8080",
+    monkeypatch.setenv("LAKE_URL", "http://lake:8080")
+    # The turn's own lake_url is never the model's address: the key goes to LAKE_URL (#30).
+    answer = service.run_turn({"request": "predict churn", "lake_url": "http://lake:8080/w/1",
                                "lake_token": "lat.task.secret", "zetta_token": "lat.task.secret"},
                               settings(tmp_path), Corpus(tmp_path / "missing.jsonl"), None,
                               FakeNode())
@@ -183,9 +185,16 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
     assert all(request.headers["authorization"] == "Bearer lat.task.secret" for request in seen)
 
     # No lake credential for the model: refused rather than sent to a provider directly.
-    monkeypatch.delenv("LAKE_URL", raising=False)
     calls = len(seen)
     refused = service.run_turn({"request": "predict churn"}, settings(tmp_path),
                                Corpus(tmp_path / "missing.jsonl"), None, FakeNode())
     assert not refused["ok"] and "lake_token" in refused["error"]
+    assert len(seen) == calls
+
+    # No LAKE_URL: refused, even when the turn names an address of its own (#30).
+    monkeypatch.delenv("LAKE_URL", raising=False)
+    refused = service.run_turn({"request": "predict churn", "lake_url": "http://lake:8080",
+                                "lake_token": "lat.task.secret"}, settings(tmp_path),
+                               Corpus(tmp_path / "missing.jsonl"), None, FakeNode())
+    assert not refused["ok"] and "LAKE_URL is not set" in refused["error"]
     assert len(seen) == calls
