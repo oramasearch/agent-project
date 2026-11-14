@@ -48,6 +48,11 @@ service on `PORT` (8080):
   would, and reports with `publish_agent_event`: `progress`, then the answer or `failed`. It starts
   when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` (this agent's own bus credential) and
   `AGENT_BUS_AGENT`. No request to lake ever waits on the agent.
+  A task is claimed only when a worker is free to run it at once (agent-project#33, LSR-075): while every
+  worker is busy nothing is received, and a task this replica cannot run stays unclaimed on the bus.
+  `AGENT_BUS_WORKERS` (default 4) run at once; one customer holds at most `AGENT_BUS_TENANT_WORKERS`
+  (default one fewer), and a freed worker goes to the waiting customer holding the fewest. At most 256
+  dispatch rows wait, never a claimed body. `tests/test_bus_backpressure.py` covers it.
 - **Start this solution is a read-only proposal.** A bus turn whose kind is
   `solution:<project>` reads `get_solution`, `analyze_dataset`, `get_dataset`, and
   `plan_features` for every methodology composed at the chosen level. It returns
