@@ -137,10 +137,14 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     # A turn's credential goes only to Lake at this service's own LAKE_URL, never to an address
     # the request names (#30). Every address is settled here, before any request goes out.
     lake_address = lakes_url()
+    # Sent with the turn's own key on every call made for it: `X-Lake-Agent-Task` when the turn
+    # was claimed by reference (lake#871), nothing otherwise.
+    task_headers = lake_bus.task_headers(turn)
     owned_node = node is None
     if node is None:
         requested = turn.get("zetta_base_url")
-        token = turn.get("zetta_token") or os.environ.get("ZETTA_TOKEN", "")
+        turn_token = turn.get("zetta_token") or ""
+        token = turn_token or os.environ.get("ZETTA_TOKEN", "")
         if not (requested or settings.default_base_url) or not token:
             return {"ok": False, "error": "no workspace to build against: the turn needs "
                                           "zetta_base_url and zetta_token"}
@@ -174,9 +178,10 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
         if not model_key:
             return {"ok": False, "error": "a turn needs its lake_token to reach the model "
                                           "through lake"}
-        client = gateway_client(lake_address, model_key)
+        client = gateway_client(lake_address, model_key, headers=task_headers)
     if node is None:
-        node = Node(base_url=base_url, token=token)
+        # The task header goes only with the turn's own key, never with ZETTA_TOKEN.
+        node = Node(base_url=base_url, token=token, headers=task_headers if turn_token else None)
     try:
         if proposing_foundation:
             try:
@@ -221,7 +226,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
                     "error": f"{kind} handoff needs LAKE_URL and lake_token",
                 }
             # LAKE_URL, or the turn's lake_url only when it is on Lake at LAKE_URL (#30).
-            lake = apps.Lake(lake_base, str(lake_token))
+            lake = apps.Lake(lake_base, str(lake_token), headers=task_headers)
         try:
             if experiment_handoff is not None:
                 result = experiments.attach(turn, result, lake)
@@ -235,7 +240,7 @@ def run_turn(turn: dict[str, Any], settings: Settings, corpus: Corpus,
     (settings.trace_dir / f"{trace_id}.json").write_text(json.dumps(
         {"trace_id": trace_id, "agent": "agent-project",
          "at": datetime.now(timezone.utc).isoformat(),
-         "turn": {**turn, "lake_token": None, "zetta_token": None},
+         "turn": {**turn, "lake_token": None, "zetta_token": None, "lake_headers": None},
          "task": task, "result": result}, indent=1, default=str))
     return {"ok": True, "trace_id": trace_id, "result": result}
 

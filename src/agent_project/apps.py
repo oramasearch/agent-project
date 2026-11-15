@@ -67,10 +67,12 @@ class LakeReader(Protocol):
 class Lake:
     """A short-lived Lake client backed by the task's delegated credential."""
 
-    def __init__(self, base_url: str, token: str) -> None:
+    def __init__(self, base_url: str, token: str,
+                 headers: dict[str, str] | None = None) -> None:
+        # `headers`: `X-Lake-Agent-Task` for a turn claimed by reference (lake#871).
         self.client = httpx.Client(
             base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {token}"},
+            headers={**dict(headers or {}), "Authorization": f"Bearer {token}"},
             timeout=180.0,
         )
 

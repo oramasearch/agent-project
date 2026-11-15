@@ -48,6 +48,16 @@ service on `PORT` (8080):
   would, and reports with `publish_agent_event`: `progress`, then the answer or `failed`. It starts
   when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` (this agent's own bus credential) and
   `AGENT_BUS_AGENT`. No request to lake ever waits on the agent.
+- **No task credential reaches this process** ([lake#871](https://github.com/oramasearch/lake/issues/871)).
+  Each claim asks for `credentials: by_reference`: Lake keeps the task's credential and answers
+  the body without it. Every call the turn makes (the workspace's Zetta through Lake, the App and
+  Experiments handoffs' Lake reads, and the model through the gateway) then carries this agent's
+  bus credential and the header `X-Lake-Agent-Task: <task id>`, which Lake honours only while that
+  task is claimed and `Running` on this agent. The bus calls themselves never send the header, and
+  neither does a call made with the operator's own `ZETTA_TOKEN`. A Lake from before lake#871
+  refuses the `credentials` field before claiming anything; the claim is then asked again without
+  it, and the body's own credentials are used as before, with no task header. Lake removes the
+  in-body mode once every library agent claims by reference.
 - **Start this solution is a read-only proposal.** A bus turn whose kind is
   `solution:<project>` reads `get_solution`, `analyze_dataset`, `get_dataset`, and
   `plan_features` for every methodology composed at the chosen level. It returns
@@ -119,7 +129,9 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
 trace without the key, health without the corpus; `tests/test_lake_bus.py`: receive, claim, run
-and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and old-engine
+and publish on the bus; `tests/test_by_reference.py` (lake#871): the claim by reference with its
+fallback on an older Lake, and the bus credential with `X-Lake-Agent-Task` on every Zetta, Lake and
+model call of a by-reference turn, never with `ZETTA_TOKEN` or on an in-body turn; `tests/test_methodologies.py`: runnable, unsupported and old-engine
 methodology behavior, feature planning and methodology-changing edits; `tests/test_solutions.py`:
 runnable and preview modules, sketch refusal, old-engine discovery, policy approval boundaries and
 measured readout operation; `tests/test_foundations.py`: S-1 predicate evidence and S-5 forecast

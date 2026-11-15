@@ -171,8 +171,8 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
             "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}})
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(service, "gateway_client", lambda url, token: model.gateway_client(
-        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
+    monkeypatch.setattr(service, "gateway_client", lambda url, token, **kw: model.gateway_client(
+        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway)), **kw))
     monkeypatch.setenv("LAKE_URL", "http://lake:8080")
     # The turn's own lake_url is never the model's address: the key goes to LAKE_URL (#30).
     answer = service.run_turn({"request": "predict churn", "lake_url": "http://lake:8080/w/1",
