@@ -44,3 +44,5 @@ After a person confirms the handoff, Lake sends the initial read-only `app` task
 `confirmed_proposal` receives repository writes, `create_app`, and `deploy_app`.
 
 The trace clears both `lake_token` and `zetta_token`; neither delegated credential is retained.
+A turn claimed by reference (lake#871) holds no task credential: these reads go with this agent's
+bus credential and `X-Lake-Agent-Task: <task id>`, and the trace clears `lake_headers` too.

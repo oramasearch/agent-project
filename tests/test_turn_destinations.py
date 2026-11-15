@@ -43,9 +43,10 @@ def sent(monkeypatch):
     monkeypatch.setattr(node_module.httpx, "Client", client)
     monkeypatch.setattr(apps.httpx, "Client", client)
 
-    def gateway(url, token):
+    def gateway(url, token, headers=None):
         requests.append(httpx.Request("POST", f"{url}/openai/v1/chat/completions",
-                                      headers={"authorization": f"Bearer {token}"}))
+                                      headers={**(headers or {}),
+                                               "authorization": f"Bearer {token}"}))
         return object()
 
     monkeypatch.setattr(service, "gateway_client", gateway)
