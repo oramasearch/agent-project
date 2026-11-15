@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Experiment handoffs use registered Lake reads and leave every write for confirmation."""
 
 from __future__ import annotations

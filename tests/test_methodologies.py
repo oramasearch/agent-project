@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Methodology selection is grounded in each workspace's live registry and data plan."""
 
 from __future__ import annotations

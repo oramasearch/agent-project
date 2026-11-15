@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+# SPDX-License-Identifier: MIT
+
 # The Project Agent's service image (agent-project#1): private on Docker Hub as
 # oramasearch/agent-project. The retrieval corpus is a named build context, `corpus`, pointing at
 # agent-project-corpus/corpus, so the image carries the precedent it cannot run without.

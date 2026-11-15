@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The project agent — builds and changes Pipelines by calling tools."""
 
 __all__ = ["main", "build", "serve"]

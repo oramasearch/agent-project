@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Solution discovery uses the workspace registry and has one compatibility fallback."""
 
 from __future__ import annotations
