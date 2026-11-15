@@ -10,7 +10,7 @@ against a live node.
 
 A frontier model, the solutions catalogue as context, and few-shot trajectories retrieved from
 `agent-project-corpus`. That corpus becomes SFT data later; until then it is the precedent this
-agent reasons from. See [`zetta-bridge/docs/agent-scaffold.md`](../../docs/agent-scaffold.md).
+agent reasons from.
 
 ## Run
 
@@ -33,8 +33,7 @@ Exit `0` clean, `2` when what was built has defects (it still prints).
 ## Service mode (in lake)
 
 In lake the Project Agent is a specialized agent of the **Agent Library**: Design's *Create a
-Solution* and Ask Orama (as a subagent) send it turns
-([lake#228](https://github.com/oramasearch/lake/issues/228)). `agent-project-serve` runs it as a
+Solution* and Ask Orama (as a subagent) send it turns. `agent-project-serve` runs it as a
 service on `PORT` (8080):
 
 | Route | What it does |
@@ -42,7 +41,7 @@ service on `PORT` (8080):
 | `GET /healthz` | `200` with the package `version` and the corpus size, or `503` when the corpus is missing: answering zero-shot would be a different agent |
 | `POST /v1/turn` | One solution operation, methodology build or edit proposal. Body: `{"request": "...", "context": {...}}` (or `{"task": {...}}` in the CLI's shape), plus `zetta_base_url` and `zetta_token` for the workspace. Answers `{ok, trace_id, result}`; `422` with `error` when the turn failed |
 
-- **Turns arrive on lake's agent bus** ([lake#269](https://github.com/oramasearch/lake/issues/269),
+- **Turns arrive on lake's agent bus** (lake#269,
   lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls `receive_agent_tasks` through lake,
   claims each task (its body arrives with the task's own credential), runs it as a `/v1/turn`
   would, and reports with `publish_agent_event`: `progress`, then the answer or `failed`. It starts
@@ -65,19 +64,19 @@ service on `PORT` (8080):
   choices. A person confirms that handoff, the later study start, and any later trial promotion.
 - **The workspace is reached through lake.** `zetta_base_url` is lake's
   `/workspaces/<customer>/zetta` path and `zetta_token` the lake key the turn carries, so every read
-  goes through lake's allow-lists and audit ([lake#235](https://github.com/oramasearch/lake/issues/235)).
+  goes through lake's allow-lists and audit.
   A turn first reads `list_solutions`. A request that names a solution operates it; any other
   request, and every request on an older engine (whose `unknown_capability` response marks it),
   takes the methodology path. Solution reads include `get_solution`, `get_policy`,
   `get_experiment`, `list_ledger`, `get_monitor`, and `get_roi_readout`; solution actions include
   `create_solution`, `run_solution`, `decide`, and approval of an explicitly authorized A1
   decision, offered only from the command line: a Lake turn's key grants none of them, so a turn
-  proposes the solution instead (lake#796). Methodology reads are `list_methodologies`, `list_datasets`,
+  proposes the solution instead. Methodology reads are `list_methodologies`, `list_datasets`,
   `get_dataset`, `analyze_dataset`, `plan_features`, and `list_projects` / `list_models` behind
   `list_pipelines` / `list_explainers`. `compile_intent` is an action; it returns the selected
   methodology's engine-owned pipeline shape. Only the arguments Zetta's compile_intent accepts
   (`project`, `methodology`, `solution`, `hints`, `name`, `input_id`) are sent; the model's own
-  goal text is not, because the compiler reads the project's captured intent (#20).
+  goal text is not, because the compiler reads the project's captured intent.
 - **`AGENT_SERVICE_TOKEN`** is required as `Authorization: Bearer <token>`, compared in constant
   time (`401` otherwise): only lake calls the service. With it unset or empty the route fails
   closed and refuses every turn with `503`.
@@ -88,7 +87,7 @@ service on `PORT` (8080):
   workspace and enforces the account's model-token limit. The service holds no `OPENAI_API_KEY`;
   a turn without a lake credential is refused. Only the command line (`Run`, above), which runs for
   no workspace, calls OpenAI directly with your own key.
-- **A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#30). The model
+- **A turn's credential goes only to Lake at this service's own `LAKE_URL`**. The model
   address is always `LAKE_URL`; a turn's `lake_url` is never used for it. The workspace address
   (`zetta_base_url`, Lake's `<LAKE_URL>/w/<workspace>/workspaces/<customer>/zetta`) and the Lake
   address for App and Experiments reads (`lake_url`) are accepted only on `LAKE_URL`'s origin
@@ -103,18 +102,14 @@ service on `PORT` (8080):
 commits). `ZETTA_CATALOG` points at it; without it the agent builds the catalogue from a bridge
 checkout, as before.
 
-**Image:** `Dockerfile`, published **private** as `oramasearch/agent-project` (created private
-before the first push; an anonymous read answers 404). It needs two named build contexts: `catalog`
-(above) and `corpus` (`agent-project-corpus/corpus`). Build it on the cluster BuildKit, never with
-Docker on a workstation:
+**Image:** `Dockerfile`, published as `oramasearch/agent-project`. It needs two named build
+contexts: `catalog` (above) and `corpus` (`agent-project-corpus/corpus`):
 
 ```sh
-buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&namespace=buildkit" build \
-  --frontend dockerfile.v0 --local context=. --local dockerfile=. \
-  --local catalog=<dir with catalog.json and catalog.source.json> --opt context:catalog=local:catalog \
-  --local corpus=../agent-project-corpus/corpus --opt context:corpus=local:corpus \
-  --opt platform=linux/amd64 \
-  --output type=image,name=docker.io/oramasearch/agent-project:<tag>,push=true
+docker buildx build --platform linux/amd64 \
+  --build-context catalog=<dir with catalog.json and catalog.source.json> \
+  --build-context corpus=../agent-project-corpus/corpus \
+  -t <registry>/agent-project:<tag> --push .
 ```
 
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
@@ -204,7 +199,7 @@ When a `before` is supplied, **what must not change matters as much as what must
 silently rebuilds has thrown away the user's work even if the result would score well alone — so a
 mutation that changed nothing is reported as a defect.
 
-### Edit mode: a proposal, never a save (agent-project#4)
+### Edit mode: a proposal, never a save
 
 A turn whose `context` carries the current `pipeline` (nodes with attributes, edges) with its
 `project` and `graph` is a **change request** (`edit.py`). The agent reads the workspace
@@ -223,11 +218,11 @@ A turn whose `context` carries the current `pipeline` (nodes with attributes, ed
 `remove_step`, `add_edge`, `remove_edge`, `set_attribute`, `rename`), each checked in order against
 the graph by `simulate`; `problems` names every one that would not apply. The reply is written from
 the checked edits, never by the model, so it cannot claim a change was made: the agent's lake key is
-read-only and lake applies the edits only when the person confirms on the pipeline page (lake#249).
+read-only and lake applies the edits only when the person confirms on the pipeline page.
 In build mode the pipeline returned is a design too (`applied: false`). It always names `dataset`
 (the one table it trains on, `<database>.<table>`), `methodology`, `model_kind`, and its features or
 transform-first step (prompt v3; `normalize` takes `dataset` from `training_sources` when the model
 put it there). It names `label` when the registry says the method requires a label, target or
 outcome. lake applies the reviewed design to a project made from an Opportunity with those fields.
 
-[#989]: https://github.com/oramasearch/zetta/issues/989
+[#989]:

@@ -55,7 +55,7 @@ missing `M-2.name` mapping for review.
 Only a request that **names a solution** (`solution` on the task or the turn's `context`) is a
 solution turn. Any other request, such as "Build a pipeline that predicts churn", is a pipeline
 design on the methodology path (`docs/methodologies/README.md`), whose answer is the
-`result.pipeline` Lake applies to a project (lake#796).
+`result.pipeline` Lake applies to a project.
 
 **A Lake turn never builds.** Lake's turn key for the Project Agent grants no solution action
 (lake `docs/api/agent-launches.md`): `create_solution` composes a pipeline, policy, protected

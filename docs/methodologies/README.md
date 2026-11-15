@@ -18,7 +18,7 @@ For a runnable method, the turn follows this order:
    transform. A label is required only when the registry marks a label, target or outcome input as
    required.
 
-A request that names no solution is a pipeline design on every engine (lake#796); only a request
+A request that names no solution is a pipeline design on every engine; only a request
 that names a solution goes to solution operation (`docs/solutions/README.md`).
 
 The validator checks that analysis, planning and (when the turn names a project) compilation
