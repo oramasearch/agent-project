@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Read Lake study state and prepare ExperimentsAgent handoffs without writes.
 
 The Project Agent can identify that a methodology trains a model, but it should not turn a

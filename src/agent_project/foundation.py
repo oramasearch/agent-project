@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Propose a solution foundation from live, read-only workspace evidence.
 
 Lake starts these turns with kind ``solution:<project>``.  The selected module, level, dataset,

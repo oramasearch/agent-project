@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Check the answer before it reaches a caller.
 
 Two failures matter and neither shows up as malformed JSON. A citation to a solution that does not

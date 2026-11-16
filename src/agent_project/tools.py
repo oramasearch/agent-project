@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The tool surface, and the rule that makes a trajectory a trajectory.
 
 This agent does not answer questions about pipelines — it builds them, by calling tools and

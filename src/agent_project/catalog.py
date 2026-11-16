@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The solutions catalogue, as context rather than as a tool.
 
 The eval generator taught this the expensive way: when the catalogue was reachable only through a

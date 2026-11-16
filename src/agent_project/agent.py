@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The project agent: a profile and an intent in, a Pipeline out — built by calling tools.
 
 No trained model yet. A frontier model, few-shot trajectories retrieved from `agent-project-corpus`,

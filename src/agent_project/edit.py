@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Edit mode: a change to an existing Pipeline, returned as a proposal lake applies on confirmation.
 
 The Project Agent never saves anything. Its lake key is read-only, and a person must see what will

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Edit mode: a change request answers with a checked proposal and never claims it was applied."""
 
 from __future__ import annotations
