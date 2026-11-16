@@ -117,6 +117,8 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
   --output type=image,name=docker.io/oramasearch/agent-project:<tag>,push=true
 ```
 
+The Dockerfile pins its bases by multi-platform index digest (lake#1003): `python:3.12-slim@sha256:5e2bdb1b…` for both stages and `ghcr.io/astral-sh/uv:0.11.7@sha256:240fb85a…`. Moving one is a reviewed change of its digest.
+
 Tests: `uv run pytest` (`tests/test_service.py`: the turn contract, real read capabilities, the
 trace without the key, health without the corpus; `tests/test_lake_bus.py`: receive, claim, run
 and publish on the bus; `tests/test_methodologies.py`: runnable, unsupported and old-engine
