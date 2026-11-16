@@ -4,7 +4,7 @@ Builds and operates catalogue Solutions, and builds or changes Pipelines, by **c
 It takes a profile and an intent — the shape `agent-autosuggest` emits — and walks a trajectory
 against a live node.
 
-**Current release: [v0.2.0](docs/releases/v0.2.0.md)** (all releases: [`docs/releases/`](docs/releases/README.md)).
+**Current release: [v0.3.0](docs/releases/v0.3.0.md)** (all releases: [`docs/releases/`](docs/releases/README.md)).
 
 ## Not a trained model yet
 

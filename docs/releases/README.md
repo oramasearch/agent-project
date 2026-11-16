@@ -10,6 +10,7 @@ tag and deployed; it is never produced by a second build.
 
 | Release | Date | Summary |
 |---|---|---|
+| [v0.3.0](v0.3.0.md) | 2026-11-16 | A minor release: bus back-pressure (a task is claimed only when a worker is free, with a per-customer limit), the licence, the security policy, base images pinned by digest and the public-tree cleanup |
 | [v0.2.0](v0.2.0.md) | 2026-10-25 | A minor release: the service token always required and compared in constant time, a turn's credential only to `LAKE_URL`, and a Lake turn that designs a pipeline or returns a `solution_proposal` without a write (prompt v7) |
 | [v0.1.0](v0.1.0.md) | 2026-10-17 | The first release: solution operation, methodology design, edit proposals and solution foundations as Lake library-agent turns over the agent bus, the model through Lake's gateway, App and Experiments handoffs, and the image |
 
