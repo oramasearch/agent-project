@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The live methodology registry and its one documented compatibility fallback.
 
 The registry belongs to Zetta. This module deliberately contains no portfolio snapshot: every

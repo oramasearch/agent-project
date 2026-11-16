@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Few-shot retrieval over the training corpus.
 
 The corpus was built to train a model. Until that model exists it earns its keep a different way:

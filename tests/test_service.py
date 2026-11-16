@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Service mode without a model or a node: the turn contract, the health rule, and the trace."""
 
 from __future__ import annotations

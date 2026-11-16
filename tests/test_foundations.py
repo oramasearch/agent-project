@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Read-only solution turns propose Lake's executable foundation shape."""
 
 from __future__ import annotations

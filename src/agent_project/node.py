@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """What a call actually returned.
 
 The corpus generator learned this the expensive way (#989): observations written by the generating

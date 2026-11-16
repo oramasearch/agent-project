@@ -2,6 +2,7 @@
 name = "agent-project"
 version = "0.2.0"
 description = "The Project Agent: builds and changes Pipelines by calling tools"
+license = "MIT"
 readme = "README.md"
 authors = [
     { name = "OramaSearch, Inc." }

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Service mode: the Project Agent as a long-running agent lake calls (lake#228, agent-project#1).
 
 The CLI builds one Pipeline from a task file and exits. In lake the agent is a specialized service

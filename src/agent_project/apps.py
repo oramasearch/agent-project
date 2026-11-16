@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Read Lake App state and prepare ApplicationAgent handoffs without writing anything.
 
 Apps and builds belong to Lake rather than the workspace Zetta endpoint.  A Project Agent turn

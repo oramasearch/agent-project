@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The live solution registry and the tools used to operate one solution.
 
 The catalogue belongs to the workspace.  This module keeps no S- or B-number snapshot: every

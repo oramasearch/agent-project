@@ -233,3 +233,10 @@ put it there). It names `label` when the registry says the method requires a lab
 outcome. lake applies the reviewed design to a project made from an Opportunity with those fields.
 
 [#989]:
+[#989]: https://github.com/oramasearch/zetta/issues/989
+
+## License
+
+MIT, see [LICENSE](LICENSE). Third-party components and their licenses are in
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES). Contributions are welcome under the
+[Contributor License Agreement](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).

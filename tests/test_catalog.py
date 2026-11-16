@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The catalogue an image carries (ZETTA_CATALOG) is read as built, and an empty one is refused."""
 
 import json
