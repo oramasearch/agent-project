@@ -3,16 +3,16 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "agent-project-v0.3.0",
-  "documentNamespace": "https://github.com/oramasearch/agent-project/sbom/250404be7dd09cb35fc61654ca8982f8b413f6ce",
+  "documentNamespace": "https://github.com/oramasearch/agent-project/sbom/1795033de1a2dbfdb1b06180b89272eeb59869dd",
   "creationInfo": {
-    "created": "2026-11-16T07:26:05Z",
+    "created": "2026-11-16T07:32:50Z",
     "creators": [
       "Organization: OramaSearch, Inc.",
       "Tool: tools/sbom.py",
       "Tool: syft"
     ],
     "licenseListVersion": "3.29",
-    "comment": "Made from source commit 250404be7dd09cb35fc61654ca8982f8b413f6ce by tools/sbom.py."
+    "comment": "Made from source commit 1795033de1a2dbfdb1b06180b89272eeb59869dd by tools/sbom.py."
   },
   "documentDescribes": [
     "SPDXRef-DocumentRoot"
